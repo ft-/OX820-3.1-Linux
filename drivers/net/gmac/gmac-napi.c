@@ -104,11 +104,11 @@ static const int GMAC_RESET_TIMEOUT_MS = 10000;
 static int debug = 0;
 
 #if (CONFIG_OXNAS_MAX_GMAC_UNITS == 1)
-static const int mac_interrupt[] = { MAC_INTERRUPT };
+static const int mac_interrupt[] = { OX820_ARM_GIC_IRQ_GMAC_A };
 static const int mac_reset_bit[] = { SYS_CTRL_RSTEN_MAC_BIT };
 static const int mac_clken_bit[] = { SYS_CTRL_CKEN_MAC_BIT };
 #elif (CONFIG_OXNAS_MAX_GMAC_UNITS == 2)
-static const int mac_interrupt[] = { MAC_INTERRUPT, MAC_2_INTERRUPT };
+static const int mac_interrupt[] = { OX820_ARM_GIC_IRQ_GMAC_A, OX820_ARM_GIC_IRQ_GMAC_B };
 static const int mac_reset_bit[] = { SYS_CTRL_RSTEN_MAC_BIT, SYS_CTRL_RSTEN_MAC_2_BIT };
 static const int mac_clken_bit[] = { SYS_CTRL_CKEN_MAC_BIT, SYS_CTRL_CKEN_MAC_2_BIT };
 #else
@@ -3874,8 +3874,8 @@ static int probe(
     netdev->irq        = mac_interrupt[unit];
 
 	if (copro_active(priv)) {
-		priv->copro_irq_fwd_ 	 = SEM_A_INTERRUPT;
-		priv->copro_irq_offload_ = SEM_B_INTERRUPT;
+		priv->copro_irq_fwd_ 	 = OX820_ARM_GIC_IRQ_SEM_A;
+		priv->copro_irq_offload_ = OX820_ARM_GIC_IRQ_SEM_B;
 	}
 
 	if (copro_active(priv)) {

@@ -49,6 +49,7 @@
 #include <mach/desc_alloc.h>
 #include <mach/memory.h>
 #include <mach/ox820sata.h>
+#include <mach/hw/rpsa.h>
 
 #include <linux/libata.h>
 #include "libata.h"
@@ -60,12 +61,13 @@
 
 #define DRIVER_AUTHOR   "Oxford Semiconductor Ltd."
 #define DRIVER_DESC     "934 SATA core controler"
-#define DRIVER_NAME     "oxnassata"
+#define DRIVER_NAME     "ox820-sata"
 /**************************************************************************/
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0");
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
+MODULE_ALIAS("platform:ox820-sata");
 
 /***************************************************************************
 * Module Parameters
@@ -77,8 +79,6 @@ static int disable_hotplug = 0;
 
 module_param(fpga, bool, 0);
 MODULE_PARM_DESC(fpga, "true to switch to FPGA based variant");
-module_param(ports, int, 0);
-MODULE_PARM_DESC(single_sata, "Number of SATA ports 1-2 (defaults to 2)");
 module_param(no_microcode, bool, 0);
 MODULE_PARM_DESC(no_microcode, "do not use microcode");
 module_param(disable_hotplug, bool, 0);
@@ -244,32 +244,6 @@ static const struct ata_port_info ox820sata_port_info = {
 	.udma_mask  = 0x7f, /* udma0-5 */
 	.port_ops   = &ox820sata_port_ops,
 };
-
-/**
- * Describes the identity of the SATA core and the resources it requires
- */ 
-static struct resource ox820sata_resources[] = {
-	{
-		.name       = "sata_registers",
-		.start		= SATA0_REGS_BASE,
-		.end		= SATA0_REGS_BASE + 0xfffff,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.name       = "sata_irq",
-		.start      = SATA_INTERRUPT,
-		.flags		= IORESOURCE_IRQ,
-	}
-};
-
-static struct platform_device ox820sata_dev = 
-{
-	.name = DRIVER_NAME,
-	.id = 0,
-	.num_resources = 2,
-	.resource  = ox820sata_resources,
-	.dev.coherent_dma_mask = 0xffffffff,
-}; 
 
 ox820sata_driver_t ox820sata_driver = 
 {
@@ -937,6 +911,9 @@ static int ox820sata_driver_probe(struct platform_device* pdev)
 	struct resource* memres = platform_get_resource(pdev, IORESOURCE_MEM, 0 );
 	int irq = platform_get_irq(pdev, 0);
 	
+	/* reset the core */
+	ox820sata_reset_core();
+
 	if(ports > 1) {
 		port_info[1] = (struct ata_port_info*) &ox820sata_port_info;
 	}
@@ -1012,6 +989,18 @@ static int ox820sata_driver_remove(struct platform_device* pdev)
 static int __init ox820sata_init_driver( void )
 {
 	int ret, aborted_at = 0;
+
+	struct ox820_rpsa_registers_t* const rpsa = (struct ox820_rpsa_registers_t*) RPSA_BASE;
+
+	/* detect whether we actually got two ports on the device */
+	if(OX820_NAS7825 == rpsa->chip_id) {
+		ports = 2;
+	} else {
+		/* no, its NAS7820 or similar */
+		ports = 1;
+	}
+	printk(KERN_INFO"sata_ox820: detected SATA with %u port%s", ports, ports != 1 ? "s" : "");
+
 	/* check ports parameter */
 	if(ports < 1 || ports > 2) {
 		return -EINVAL;
@@ -1048,24 +1037,9 @@ static int __init ox820sata_init_driver( void )
 	ret = ox820_disklight_led_register();
 	
 	if(0 == ret) {
+		++aborted_at;
 		ret = platform_driver_register( &ox820sata_driver.driver );
 		if(0 != ret) {
-			ox820_disklight_led_unregister();
-		}
-	}
-	
-	if(0 == ret) {
-	++aborted_at;
-		/* reset the core */
-		ox820sata_reset_core();
-	}
-
-	if(0 == ret) {
-	++aborted_at;
-		/* register the ata device for the driver to find */
-		ret = platform_device_register( &ox820sata_dev );
-		if(ret != 0) {
-			platform_driver_unregister( &ox820sata_driver.driver );
 			ox820_disklight_led_unregister();
 		}
 	}
@@ -1084,7 +1058,6 @@ static int __init ox820sata_init_driver( void )
  */
 static void __exit ox820sata_exit_driver( void )
 {
-	platform_device_unregister( &ox820sata_dev );
 	platform_driver_unregister( &ox820sata_driver.driver );
 	ox820_disklight_led_unregister();
 }

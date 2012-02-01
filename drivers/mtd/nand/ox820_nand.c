@@ -21,6 +21,8 @@
 #include <linux/mtd/partitions.h>
 #include <asm/io.h>
 #include <mach/hardware.h>
+#include <mach/hw/sysctrl.h>
+#include <mach/mfctrl.h>
 #include "../mtdcore.h"
 
 #define	OX820_NAND_NAME	"OX820_NAND"
@@ -46,8 +48,6 @@
 // status register bits
 #define	OX820_NAND_STATUS_FAIL			(1 << 0)
 #define	OX820_NAND_STATUS_READY			(1 << 6)
-
-extern spinlock_t oxnas_gpio_spinlock;
 
 DECLARE_WAIT_QUEUE_HEAD(wq);
 
@@ -148,6 +148,7 @@ static void ox820_nand_hwcontrol(struct mtd_info *mtd, int cmd, unsigned int ctr
 
 static int ox820_nand_init(void)
 {
+    struct ox820_sysctrl_registers_t* sysctrl = (struct ox820_sysctrl_registers_t*) SYS_CONTROL_BASE;
 	int err,i ;
 	struct nand_chip *this;
 
@@ -164,18 +165,11 @@ static int ox820_nand_init(void)
 	this->dev_ready = NULL;
 	this->ecc.mode = NAND_ECC_SOFT;
 
-	spin_lock(&oxnas_gpio_spinlock);
-        /*enable static bus to device_select */
-	/* enable secondary functions for: gpioa12 .. gpioa 19 (data bus),
-	 *          * gpioa20(we) gpioa21(oe), gpioa 22(cs 0), gpiob 0 ..4 (address a0-a4)
-	 *
-	 * */
-	writel(readl(SYSCTRL_MFA_SECSEL_CTRL) | STATIC_NAND_ENABLE0, SYSCTRL_MFA_SECSEL_CTRL);
+    ox820_mf_select_static(0x000FFFFF, 1);
 
 	/* enable clock and release static block reset */
-	writel(1 << SYS_CTRL_CKEN_STATIC_BIT, SYS_CTRL_CKEN_SET_CTRL);
-	writel(1 << SYS_CTRL_RSTEN_STATIC_BIT, SYS_CTRL_RSTEN_CLR_CTRL);
-	spin_unlock(&oxnas_gpio_spinlock);
+    sysctrl->cken_set_ctrl = MSK_OX820_SYSCTRL_CKEN_STATIC;
+    sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_STATIC;
 
 	// reset
 	ox820_nand_write_command(OX820_NAND_COMMAND_RESET);

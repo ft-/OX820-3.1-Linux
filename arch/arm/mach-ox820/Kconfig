@@ -43,6 +43,12 @@ config MACH_IOMEGAHMNDCE
 
 endmenu
 
+config SUPPORT_LEON
+	bool "Enable support for LEON coprocessor"
+	default y
+	help
+		Support for LEON coprocessor available on OX820
+
 config NOMINAL_RPSCLK_FREQ
         int "The input clock frequency to the RPS"
         default 6250000 
@@ -92,6 +98,16 @@ config ARCH_OXNAS_CONSOLE_UART
 	help
 	 We should not reset the UART that is already in use as the 
 	 console during boot
+
+if PCI
+config OXNAS_PCIE_RESET_GPIO
+	int "The GPIO used for resetting the PCIe devices"
+	depends on PCI
+	default 44 if ARCH_OX820
+	help
+	 The GPIO is used within the OX820 PCIe support to reset PCIe devices.
+	 For PogoPlug choose 44.
+endif
 
 endmenu
 endif

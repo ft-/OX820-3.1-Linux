@@ -28,12 +28,22 @@
 #include <asm/mach-types.h>
 #include <mach/hardware.h>
 #include <mach/system.h>
+#include <mach/hw/pciephy.h>
+#include <mach/hw/sysctrl.h>
+#include <mach/hw/pcie.h>
+#include <mach/hw/gpio.h>
 
 #define VERSION_ID_MAGIC 0x082510b5
 
 static int link_up[2];
 static DEFINE_SPINLOCK(pciea_lock);
 static DEFINE_SPINLOCK(pcieb_lock);
+
+static struct ox820_pciephy_registers_t* const regs_pciephy = (struct ox820_pciephy_registers_t*) PCIE_PHY;
+static struct ox820_sysctrl_registers_t* const regs_sysctrl = (struct ox820_sysctrl_registers_t*) SYS_CONTROL_BASE;
+static struct ox820_secctrl_registers_t* const regs_secctrl = (struct ox820_secctrl_registers_t*) SEC_CONTROL_BASE;
+static struct ox820_pcie_elbi_registers_t* const regs_pciea_elbi = (struct ox820_pcie_elbi_registers_t*) PCIEA_ELBI_BASE;
+static struct ox820_pcie_elbi_registers_t* const regs_pcieb_elbi = (struct ox820_pcie_elbi_registers_t*) PCIEB_ELBI_BASE;
 
 void __iomem * ox820_ioremap(
 	unsigned long phys_addr,
@@ -42,12 +52,12 @@ void __iomem * ox820_ioremap(
 {
 	/* For non-PCI accesses use std ARM ioremap */
 	if (!is_pci_phys_addr(phys_addr)) {
-//printk("__ox820_ioremap() Non-PCI phys addr %p\n", (void*)phys_addr);
+		//printk("__ox820_ioremap() Non-PCI phys addr %p\n", (void*)phys_addr);
 		return __arm_ioremap(phys_addr, size, mtype);
 	}
 
 	/* PCI accesses use the unmodified physical address */
-//printk("__ox820_ioremap() PCI phys addr %p\n", (void*)phys_addr);
+	//printk("__ox820_ioremap() PCI phys addr %p\n", (void*)phys_addr);
 	return (void*)pci_phys_to_virt(phys_addr);
 }
 EXPORT_SYMBOL(ox820_ioremap);
@@ -56,11 +66,11 @@ void ox820_iounmap(void __iomem *virt_addr)
 {
 	/* PCI addresses are not ioremapped */
 	if (!is_pci_virt_addr((u32)virt_addr)) {
-//printk("__ox820_iounmap() Non-PCI virt addr %p\n", virt_addr);
+		//printk("__ox820_iounmap() Non-PCI virt addr %p\n", virt_addr);
 		__iounmap(virt_addr);
 	}
-//else
-//printk("__ox820_iounmap() PCI virt addr %p - not unmapping\n", virt_addr);
+	//else
+		//printk("__ox820_iounmap() PCI virt addr %p - not unmapping\n", virt_addr);
 }
 EXPORT_SYMBOL(ox820_iounmap);
 
@@ -79,14 +89,14 @@ unsigned long __ox820_inl(u32 phys)
 	unsigned long           value;
 
 	if (!link_up[controller_index_from_phys(phys)]) {
-//printk("inl() phys %p -> link down", (void*)phys);
+		//printk("inl() phys %p -> link down", (void*)phys);
 		value = ~0UL;
 	} else {
 		u32 virt = pci_phys_to_virt(phys);
 
-//printk("inl() phys %p -> virt %p", (void*)phys, (void*)virt);
+		//printk("inl() phys %p -> virt %p", (void*)phys, (void*)virt);
 		value = __raw_readl(virt);
-//printk(" value %p\n", (void*)value);
+		//printk(" value %p\n", (void*)value);
 	}
 
 	return value;
@@ -97,9 +107,9 @@ unsigned short __ox820_inw(u32 phys)
 	/* Only 32-bit accesses are working on the PCIe controller */
 	unsigned short value;
 
-//printk("inw() Adr %p, calling inl() to avoid non-quad access\n", (void*)phys);
+	//printk("inw() Adr %p, calling inl() to avoid non-quad access\n", (void*)phys);
 	value = (unsigned short)(inl(phys & ~3) >> (phys | 3));
-//printk("inw() value after shifting %p\n", (void*)(unsigned long)value);
+	//printk("inw() value after shifting %p\n", (void*)(unsigned long)value);
 	return value;
 }
 
@@ -108,31 +118,27 @@ unsigned char __ox820_inb(u32 phys)
 	/* Only 32-bit accesses are working on the PCIe controller */
 	unsigned char value;
 
-//printk("inb() Adr %p, calling inl() to avoid non-quad access\n", (void*)phys);
+	//printk("inb() Adr %p, calling inl() to avoid non-quad access\n", (void*)phys);
 	value = (unsigned char)(inl(phys & ~3) >> (phys | 3));
-//printk("inb() value after shifting %p\n", (void*)(unsigned long)value);
+	//printk("inb() value after shifting %p\n", (void*)(unsigned long)value);
 	return value;
 }
 
-/**
- * Todo: will need locking around slave control register modifications
- *  if it turns out we really do have to do this mucking around with
- *  byte enables
- */
 static void inline set_out_lanes(
 	u32           virt,
 	unsigned char lanes)
 {
 	/* Each PCIe core has a separate slave control register */
-	unsigned long slave_reg_adr =
-		controller_index_from_virt(virt) ? SYS_CTRL_PCIEB_AHB_SLAVE_CTRL :
-										   SYS_CTRL_PCIEA_AHB_SLAVE_CTRL;
-
 	/* Enable only the requested byte lanes for output */
-	unsigned long slave_reg_val = readl(slave_reg_adr);
-	slave_reg_val &= ~(0xf << SYS_CTRL_PCIE_SLAVE_BE_BIT);
-	slave_reg_val |= (lanes << SYS_CTRL_PCIE_SLAVE_BE_BIT);
-	writel(slave_reg_val, slave_reg_adr);
+	if(controller_index_from_virt(virt)) {
+		/* PCIEB */
+		regs_sysctrl->pcieb_ahb_slave_ctrl &= ~(0xf << BIT_OX820_SYSCTRL_PCIE_AHB_SLAVE_CTRL_BE);
+		regs_sysctrl->pcieb_ahb_slave_ctrl |= (lanes << BIT_OX820_SYSCTRL_PCIE_AHB_SLAVE_CTRL_BE);
+	} else {
+		/* PCIEA */
+		regs_sysctrl->pciea_ahb_slave_ctrl &= ~(0xf << BIT_OX820_SYSCTRL_PCIE_AHB_SLAVE_CTRL_BE);
+		regs_sysctrl->pciea_ahb_slave_ctrl |= (lanes << BIT_OX820_SYSCTRL_PCIE_AHB_SLAVE_CTRL_BE);
+	}
 }
 
 static void out_lanes(
@@ -140,10 +146,10 @@ static void out_lanes(
 	u32           phys,
 	unsigned char lanes)
 {
-//printk("out_lanes() value %p, phys %p, lanes %p\n", (void*)(unsigned long)value, (void*)phys, (void*)(unsigned long)lanes);
+	//printk("out_lanes() value %p, phys %p, lanes %p\n", (void*)(unsigned long)value, (void*)phys, (void*)(unsigned long)lanes);
 
 	if (!link_up[controller_index_from_phys(phys)]) {
-//printk("out_lanes() %p to phys %p -> link down", (void*)value, (void*)phys);
+		//printk("out_lanes() %p to phys %p -> link down", (void*)value, (void*)phys);
 	} else {
 		unsigned long flags;
 		u32           virt = pci_phys_to_virt(phys);
@@ -157,10 +163,10 @@ static void out_lanes(
 			set_out_lanes(virt, lanes);
 		}
 
-//printk("out_lanes() %p to phys %p -> virt %p, lanes 0x%p", (void*)value, (void*)phys, (void*)virt, (void*)(unsigned long)lanes);
+		//printk("out_lanes() %p to phys %p -> virt %p, lanes 0x%p", (void*)value, (void*)phys, (void*)virt, (void*)(unsigned long)lanes);
 		/* Do the quad-aligned write */
 		__raw_writel(value, virt);
-//printk(" OK\n");
+		//printk(" OK\n");
 
 		if (lanes != 0xf) {
 			/**
@@ -181,7 +187,7 @@ void __ox820_outl(
 	unsigned long value,
 	u32           phys)
 {
-//printk("outl() value %p, addr %p\n", (void*)(unsigned long)value, (void*)phys);
+	//printk("outl() value %p, addr %p\n", (void*)(unsigned long)value, (void*)phys);
 	out_lanes(value, phys, 0xf);
 }
 
@@ -190,7 +196,7 @@ void __ox820_outw(
 	u32            phys)
 {
 	u32 quad_val = (u32)value << (8 * (phys & 3));
-//printk("outw() value %p, addr %p, quad_val %p\n", (void*)(unsigned long)value, (void*)phys, (void*)quad_val);
+	//printk("outw() value %p, addr %p, quad_val %p\n", (void*)(unsigned long)value, (void*)phys, (void*)quad_val);
 	out_lanes(quad_val, phys & ~3, 3 << (phys & 3));
 }
 
@@ -199,7 +205,7 @@ void __ox820_outb(
 	u32           phys)
 {
 	u32 quad_val = (unsigned long)value << (8 * (phys & 3));
-//printk("outb() value %p, addr %p, quad_val %p\n", (void*)(u32)value, (void*)phys, (void*)quad_val);
+	//printk("outb() value %p, addr %p, quad_val %p\n", (void*)(u32)value, (void*)phys, (void*)quad_val);
 	out_lanes(quad_val, phys & ~3, 1 << (phys & 3));
 }
 
@@ -233,11 +239,11 @@ EXPORT_SYMBOL(__ox820_outsl);
 
 #define LINK_UP_TIMEOUT_SECONDS 3
 
-#define TOTAL_WINDOW_SIZE	(64*1024*1024)
+#define TOTAL_WINDOW_SIZE		(64*1024*1024)
 
 #define NON_PREFETCHABLE_WINDOW_SIZE	(32*1024*1024)
-#define PREFETCHABLE_WINDOW_SIZE		(30*1024*1024)
-#define IO_WINDOW_SIZE					(1*1024*1024)
+#define PREFETCHABLE_WINDOW_SIZE	(30*1024*1024)
+#define IO_WINDOW_SIZE			(1*1024*1024)
 
 #if ((NON_PREFETCHABLE_WINDOW_SIZE + PREFETCHABLE_WINDOW_SIZE + IO_WINDOW_SIZE) >= TOTAL_WINDOW_SIZE)
 #error "PCIe windows sizes incorrect"
@@ -245,7 +251,7 @@ EXPORT_SYMBOL(__ox820_outsl);
 
 #define NON_PREFETCHABLE_WINDOW_OFFSET	0 
 #define PREFETCHABLE_WINDOW_OFFSET		(NON_PREFETCHABLE_WINDOW_SIZE)
-#define IO_WINDOW_OFFSET				(NON_PREFETCHABLE_WINDOW_SIZE + PREFETCHABLE_WINDOW_SIZE)
+#define IO_WINDOW_OFFSET			(NON_PREFETCHABLE_WINDOW_SIZE + PREFETCHABLE_WINDOW_SIZE)
 #define CONFIG_WINDOW_OFFSET			(NON_PREFETCHABLE_WINDOW_SIZE + PREFETCHABLE_WINDOW_SIZE + IO_WINDOW_SIZE)
 
 static int __init ox820_map_irq(
@@ -253,8 +259,8 @@ static int __init ox820_map_irq(
 	u8              slot,
 	u8              pin)
 {
-//printk(KERN_INFO "ox820_map_irq(): dev->bus->number = %d, returning IRQ %d\n", dev->bus->number, dev->bus->number ? PCIEB_INTERRUPT : PCIEA_INTERRUPT);
-	return dev->bus->number ? PCIEB_INTERRUPT : PCIEA_INTERRUPT;
+	//printk(KERN_INFO "ox820_map_irq(): dev->bus->number = %d, returning IRQ %d\n", dev->bus->number, dev->bus->number ? OX820_ARM_GIC_IRQ_PCIE_B : OX820_ARM_GIC_IRQ_PCIE_A);
+	return dev->bus->number ? OX820_ARM_GIC_IRQ_PCIE_B : OX820_ARM_GIC_IRQ_PCIE_A;
 }
 
 static struct resource pciea_non_mem = {
@@ -286,12 +292,12 @@ static int __init ox820_pciea_setup_resources(struct resource **resource)
         printk(KERN_INFO
                "ox820_pcie_setup_resources() "
                "Enabling PCIe Pre-Emphasis\n");
-        writel(0x14, PCIE_PHY);
-        writel(0x4ce10, PCIE_PHY + 4);
-        writel(0x2ce10, PCIE_PHY + 4);
-        writel(0x2004, PCIE_PHY);
-        writel(0x482c7, PCIE_PHY + 4);
-        writel(0x282c7, PCIE_PHY + 4);
+        regs_pciephy->address_load = 0x14;
+        regs_pciephy->data_load = 0x4ce10;
+        regs_pciephy->data_load = 0x2ce10;
+        regs_pciephy->address_load = 0x2004;
+        regs_pciephy->data_load = 0x482c7;
+        regs_pciephy->data_load = 0x282c7;
 
         printk(KERN_INFO "ox820_pciea_setup_resources() resource %p\n", resource);
         printk(KERN_INFO "ox820_pciea_setup_resources()    io:      0x%08x - 0x%08x\n",
@@ -361,7 +367,7 @@ static int __init ox820_pcieb_setup_resources(struct resource **resource)
 {
 	int ret = 0;
 
-//printk(KERN_INFO "ox820_pcieb_setup_resources() resource %p\n", resource);
+	//printk(KERN_INFO "ox820_pcieb_setup_resources() resource %p\n", resource);
 	ret = request_resource(&iomem_resource, &pcieb_io_mem);
 	if (ret) {
 		printk(KERN_ERR "PCIeB: unable to allocate I/O memory region (%d)\n", ret);
@@ -402,7 +408,7 @@ int __init ox820_pci_setup(
 	struct pci_sys_data *sys)
 {
 	int ret = 0;
-//printk(KERN_INFO "ox820_pci_setup() nr %d, sys %p, sys->busnr %d, sys->bus %p\n", nr, sys, sys->busnr, sys->bus);
+	//printk(KERN_INFO "ox820_pci_setup() nr %d, sys %p, sys->busnr %d, sys->bus %p\n", nr, sys, sys->busnr, sys->bus);
 
 	if (nr == 0) {
 		sys->mem_offset = 0;
@@ -461,11 +467,11 @@ static unsigned long pci_addr(
 	 */
 	modified_bus_number = bus_number - primary_bus_number;
 
-//printk(KERN_INFO "pci_addr() Controller %d, modified_bus_number %d\n", controller, modified_bus_number);
+	//printk(KERN_INFO "pci_addr() Controller %d, modified_bus_number %d\n", controller, modified_bus_number);
 
 	/* Get the start address of the config region for the controller */
 	addr = controller ? (PCIEB_CLIENT_BASE + CONFIG_WINDOW_OFFSET) :
-					    (PCIEA_CLIENT_BASE + CONFIG_WINDOW_OFFSET);
+	                    (PCIEA_CLIENT_BASE + CONFIG_WINDOW_OFFSET);
 
 	/*
 	 * We'll assume for now that the offset, function, slot, bus encoding
@@ -493,28 +499,28 @@ static int ox820_read_config(
 	unsigned int         slot = PCI_SLOT(devfn);
 	u32                  v;
 
-//printk(KERN_INFO "ox820_read_config() sys->busnr %d, bus->number %d, devfn %p, "
-//	"where %p, size %d\n", sys->busnr, bus->number, (void*)devfn, (void*)where, size);
+	//printk(KERN_INFO "ox820_read_config() sys->busnr %d, bus->number %d, devfn %p, "
+	//	"where %p, size %d\n", sys->busnr, bus->number, (void*)devfn, (void*)where, size);
 
-//printk(KERN_INFO "ox820_read_config() bus->self %p, bus->parent %p, number %d, "
-//	"primary %d,  secondary %d, subordinate %d\n", bus->self, bus->parent,
-//	bus->number, bus->primary, bus->secondary, bus->subordinate);
+	//printk(KERN_INFO "ox820_read_config() bus->self %p, bus->parent %p, number %d, "
+	//	"primary %d,  secondary %d, subordinate %d\n", bus->self, bus->parent,
+	//	bus->number, bus->primary, bus->secondary, bus->subordinate);
 
 	/* Only a single device per bus for PCIe point-to-point links */
 	if (!link_up[controller_index_from_bus(sys->busnr)] || slot > 0) {
-//printk(KERN_INFO "ox820_read_config() Unsupported slot number %d or controller link down\n", slot);
+		//printk(KERN_INFO "ox820_read_config() Unsupported slot number %d or controller link down\n", slot);
 		/* Fake the no-device response for the unsupported slot numbers */
 		*val = ~0UL;
 	} else {
 		/* Calculate the config space address for the given bus/device/slot */
 		unsigned long addr = pci_addr(sys->busnr, bus->number, devfn, where);
 
-//printk(KERN_INFO "ox820_read_config() sys->busnr %d, bus->number %d, devfn %p, "
-//	"where %p, size %d -> slot %d, func %d -> addr %p\n", sys->busnr, bus->number,
-//	(void*)devfn, (void*)where, size, slot, PCI_FUNC(devfn), (void*)addr);
+		//printk(KERN_INFO "ox820_read_config() sys->busnr %d, bus->number %d, devfn %p, "
+		//	"where %p, size %d -> slot %d, func %d -> addr %p\n", sys->busnr, bus->number,
+		//	(void*)devfn, (void*)where, size, slot, PCI_FUNC(devfn), (void*)addr);
 
 		v = __raw_readl(addr);
-//printk(KERN_INFO "ox820_read_config() v %p\n", (void*)v);
+		//printk(KERN_INFO "ox820_read_config() v %p\n", (void*)v);
 		switch (size) {
 			case 1:
 				if (where & 2) v >>= 16;
@@ -532,7 +538,7 @@ static int ox820_read_config(
 		}
 
 		*val = v;
-//printk(KERN_INFO "ox820_read_config() Slot number %d read value %p\n", slot, (void*)*val);
+		//printk(KERN_INFO "ox820_read_config() Slot number %d read value %p\n", slot, (void*)*val);
 	}
 
 	return PCIBIOS_SUCCESSFUL;
@@ -548,36 +554,35 @@ static int ox820_write_config(
 	struct pci_sys_data *sys = bus->sysdata;
 	unsigned int         slot = PCI_SLOT(devfn);
 
-//printk(KERN_INFO "ox820_write_config() sys->busnr %d, bus->number %d, devfn %p, "
-//	"where %p, size %d\n", sys->busnr, bus->number, (void*)devfn, (void*)where, size);
+	//printk(KERN_INFO "ox820_write_config() sys->busnr %d, bus->number %d, devfn %p, "
+	//	"where %p, size %d\n", sys->busnr, bus->number, (void*)devfn, (void*)where, size);
 
-//printk(KERN_INFO "ox820_write_config() bus->self %p, bus->parent %p, number %d, "
-//	"primary %d,  secondary %d, subordinate %d\n", bus->self, bus->parent,
-//	bus->number, bus->primary, bus->secondary, bus->subordinate);
+	//printk(KERN_INFO "ox820_write_config() bus->self %p, bus->parent %p, number %d, "
+	//	"primary %d,  secondary %d, subordinate %d\n", bus->self, bus->parent,
+	//	bus->number, bus->primary, bus->secondary, bus->subordinate);
 
 	/* Only a single device per bus for PCIe point-to-point links */
 	if (!link_up[controller_index_from_bus(sys->busnr)] || slot > 0) {
-//printk(KERN_INFO "ox820_write_config() Unsupported slot number %d\n", slot);
+		//printk(KERN_INFO "ox820_write_config() Unsupported slot number %d\n", slot);
 	} else {
 		/* Calculate the config space address for the given bus/device/slot */
 		u32 virt = pci_addr(sys->busnr, bus->number, devfn, where);
 
-//printk(KERN_INFO "ox820_write_config() sys->busnr %d, bus->number %d, devfn %p, "
-//	"where %p, size %d -> slot %d, func %d -> virt %p write %p\n", sys->busnr, bus->number,
-//	(void*)devfn, (void*)where, size, slot, PCI_FUNC(devfn), (void*)virt, (void*)val);
+		//printk(KERN_INFO "ox820_write_config() sys->busnr %d, bus->number %d, devfn %p, "
+		//	"where %p, size %d -> slot %d, func %d -> virt %p write %p\n", sys->busnr, bus->number,
+		//	(void*)devfn, (void*)where, size, slot, PCI_FUNC(devfn), (void*)virt, (void*)val);
 
 		/* Only 32-bit accesses are working, so do RMW for 8/16 bit accesses */
-		/* Todo: Will need some locking if this solution has to go in permanently */
 		if (size == 4) {
-//printk(KERN_INFO "ox820_write_config() Writing %p to %p\n", (void*)val, (void*)virt);
+			//printk(KERN_INFO "ox820_write_config() Writing %p to %p\n", (void*)val, (void*)virt);
 			__raw_writel(val, virt);
 		} else {
 			/* Use byte lane enables for byte and word writes */
 			unsigned long flags;
 			u32           quad_val = val << (8 * (virt & 3));
 
-//printk(KERN_INFO "ox820_write_config() Writing %p to %p, lanes %p\n",
-//	(void*)quad_val, (void*)(virt & ~3), (void*)((3 >> (2-size)) << (virt & 3)));
+			//printk(KERN_INFO "ox820_write_config() Writing %p to %p, lanes %p\n",
+			//	(void*)quad_val, (void*)(virt & ~3), (void*)((3 >> (2-size)) << (virt & 3)));
 
 			/* Lock use of PCIe out lane control register */
 			spin_lock_irqsave(
@@ -605,23 +610,17 @@ struct pci_bus *ox820_pci_scan_bus(
 	int                  nr,
 	struct pci_sys_data *sys)
 {
-//printk(KERN_INFO "ox820_pci_scan_bus() nr %d sys %p, sys->bus %p\n", nr, sys, sys->bus);
+	//printk(KERN_INFO "ox820_pci_scan_bus() nr %d sys %p, sys->bus %p\n", nr, sys, sys->bus);
 	return pci_scan_bus(sys->busnr, &ox820_pci_ops, sys);
-//printk(KERN_INFO "ox820_pci_scan_bus() Leaving: sys->bus %p\n", sys->bus);
+	//printk(KERN_INFO "ox820_pci_scan_bus() Leaving: sys->bus %p\n", sys->bus);
 }
-#define CONFIG_OXNAS_PCIE_RESET_GPIO 44 
+
 #if (CONFIG_OXNAS_PCIE_RESET_GPIO < SYS_CTRL_NUM_PINS)
-#define	PCIE_OUTPUT_SET	GPIO_A_OUTPUT_SET
-#define	PCIE_OUTPUT_CLEAR	GPIO_A_OUTPUT_CLEAR
-#define	PCIE_OUTPUT_ENABLE_SET	GPIO_A_OUTPUT_ENABLE_SET
-#define	PCIE_OUTPUT_ENABLE_CLEAR	GPIO_A_OUTPUT_ENABLE_CLEAR
+struct ox820_gpio_registers_t* regs_gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
 #else
-#define PCIE_RESET_PIN          (CONFIG_OXNAS_PCIE_RESET_GPIO - SYS_CTRL_NUM_PINS)
-#define	PCIE_OUTPUT_SET	GPIO_B_OUTPUT_SET
-#define	PCIE_OUTPUT_CLEAR	GPIO_B_OUTPUT_CLEAR
-#define	PCIE_OUTPUT_ENABLE_SET	GPIO_B_OUTPUT_ENABLE_SET
-#define	PCIE_OUTPUT_ENABLE_CLEAR	GPIO_B_OUTPUT_ENABLE_CLEAR
+struct ox820_gpio_registers_t* regs_gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
 #endif
+#define PCIE_RESET_PIN          (CONFIG_OXNAS_PCIE_RESET_GPIO & 31)
 
 void __init ox820_pci_preinit(void)
 {
@@ -629,40 +628,57 @@ void __init ox820_pci_preinit(void)
 	unsigned long version_id;
 	unsigned long pin = ( 1 << PCIE_RESET_PIN);
 
-    writel(1<<SYS_CTRL_RSTEN_PLLB_BIT, SYS_CTRL_RSTEN_CLR_CTRL); // take PLL B out of reset
-    // reset PCIe cards
-    writel(pin, PCIE_OUTPUT_ENABLE_SET);
-    writel(pin, PCIE_OUTPUT_CLEAR);
-    wmb();
-    mdelay(500);	// wait for PCIe cards to reset and for PLL B to lock
-    writel(pin, PCIE_OUTPUT_ENABLE_CLEAR);	// must tri-state the pin to pull it up, otherwise hardware reset may not work
-    wmb();
+    	// put PLL into bypass
+	regs_secctrl->pllb_ctrl[0] |= MSK_OX820_SECCTRL_PLLB_CTRL0_PLLB_BYPASS;
+	wmb();
+	udelay(10);
 
-    writel(0x218, SEC_CTRL_PLLB_CTRL0); // set PLL B control information
+	// put PLL into reset
+	regs_sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_PLLB;
+	wmb();
+	udelay(10);
+
+	regs_secctrl->pllb_ctrl[0] = 0x218; // set PLL B control information
+
+	// take PLL out of reset
+	regs_sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_PLLB;
+	wmb();
+	udelay(100);
+
+	// take PLL out of bypass
+	regs_secctrl->pllb_ctrl[0] &= (~MSK_OX820_SECCTRL_PLLB_CTRL0_PLLB_BYPASS);
+	wmb();
+
+	// reset PCIe cards
+	regs_gpio->output_enable_set = pin;
+	regs_gpio->output_clear = pin;
+	wmb();
+	mdelay(500);	// wait for PCIe cards to reset and for PLL B to lock
+	regs_gpio->output_enable_clear = pin; // must tri-state the pin to pull it up, otherwise hardware reset may not work
+	wmb();
+
+	regs_sysctrl->pllb_ctrl[0] = 0x218; // set PLL B control information
 	
-    writel(0x0F, SYS_CTRL_HCSL_CTRL); // generate clocks from HCSL buffers
+	regs_sysctrl->hcsl_ctrl = 0x0F; // generate clocks from HCSL buffers
 
-    /* Ensure PCIe PHY is properly reset */
-    writel(1UL << SYS_CTRL_RSTEN_PCIEPHY_BIT, SYS_CTRL_RSTEN_SET_CTRL);
-    wmb();
-    writel(1UL << SYS_CTRL_RSTEN_PCIEPHY_BIT, SYS_CTRL_RSTEN_CLR_CTRL);
-    wmb();
+	/* Ensure PCIe PHY is properly reset */
+	regs_sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_PCIEPHY;
+	wmb();
+	regs_sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_PCIEPHY;
+	wmb();
 
 	/* Ensure both PCIe cores are properly reset */
-    writel(1UL << SYS_CTRL_RSTEN_PCIEA_BIT, SYS_CTRL_RSTEN_SET_CTRL);
-    writel(1UL << SYS_CTRL_RSTEN_PCIEB_BIT, SYS_CTRL_RSTEN_SET_CTRL);
-    wmb();
-    writel(1UL << SYS_CTRL_RSTEN_PCIEA_BIT, SYS_CTRL_RSTEN_CLR_CTRL);
-    writel(1UL << SYS_CTRL_RSTEN_PCIEB_BIT, SYS_CTRL_RSTEN_CLR_CTRL);
-    wmb();
+	regs_sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_PCIEA | MSK_OX820_SYSCTRL_RSTEN_PCIEB;
+	wmb();
+	regs_sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_PCIEA | MSK_OX820_SYSCTRL_RSTEN_PCIEB;
+	wmb();
 
 	/* Start both PCIe core clocks */
-    writel(1UL << SYS_CTRL_CKEN_PCIEA_BIT, SYS_CTRL_CKEN_SET_CTRL);
-    writel(1UL << SYS_CTRL_CKEN_PCIEB_BIT, SYS_CTRL_CKEN_SET_CTRL);
-    // allow entry to L23 state
-    writel(1UL << SYS_CTRL_PCIE_READY_ENTR_L23_BIT, SYS_CTRL_PCIEA_CTRL);
-    writel(1UL << SYS_CTRL_PCIE_READY_ENTR_L23_BIT, SYS_CTRL_PCIEB_CTRL);
-    wmb();
+	regs_sysctrl->cken_set_ctrl = MSK_OX820_SYSCTRL_CKEN_PCIEA | MSK_OX820_SYSCTRL_CKEN_PCIEB;
+	// allow entry to L23 state
+	regs_sysctrl->pciea_ctrl = MSK_OX820_SYSCTRL_PCIE_CTRL_READY_ENTR_L23;
+	regs_sysctrl->pcieb_ctrl = MSK_OX820_SYSCTRL_PCIE_CTRL_READY_ENTR_L23;
+	wmb();
 
 	/* Use the version register as an early test for core presence */
 	link_up[0] = link_up[1] = 1;
@@ -688,13 +704,13 @@ void __init ox820_pci_preinit(void)
 	 */
 	if (link_up[0]) {
 		/* Set PCIe core into RootCore mode */
-		writel(SYS_CTRL_PCIE_DEVICE_TYPE_ROOT << SYS_CTRL_PCIE_DEVICE_TYPE_BIT, SYS_CTRL_PCIEA_CTRL);
+		regs_sysctrl->pciea_ctrl = VAL_OX820_SYSCTRL_PCIE_CTRL_DEVICE_TYPE_ROOT;
 		wmb();
 
 		/* Pulse PCIe core reset, so take new RootCore mode I assume */
-		writel(1UL << SYS_CTRL_RSTEN_PCIEA_BIT, SYS_CTRL_RSTEN_SET_CTRL);
+		regs_sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_PCIEA;
 		wmb();
-		writel(1UL << SYS_CTRL_RSTEN_PCIEA_BIT, SYS_CTRL_RSTEN_CLR_CTRL);
+		regs_sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_PCIEA;
 		wmb();
 
 		/*
@@ -702,7 +718,7 @@ void __init ox820_pci_preinit(void)
 		 * to access anywhere in the AHB address map. Might be regarded as a bit
 		 * dangerous, but let's get things working before we worry about that
 		 */
-		writel(0 << ENABLE_IN_ADDR_TRANS_BIT, IB_ADDR_XLATE_ENABLE);
+		regs_pciea_elbi->ib_addr_xlate_enable = VAL_OX820_PCIE_ELBI_XLATE_ENABLE_OFF;
 		wmb();
 
 		/*
@@ -729,26 +745,26 @@ void __init ox820_pci_preinit(void)
 		 */
 
 		/* Set PCIeA mem0 region to be 1st 16MB of the 64MB PCIeA window */
-		writel(pciea_non_mem.start,	SYS_CTRL_PCIEA_IN0_MEM_ADDR);
-		writel(pciea_non_mem.end,	SYS_CTRL_PCIEA_IN0_MEM_LIMIT);
-		writel(pciea_non_mem.start,	SYS_CTRL_PCIEA_POM0_MEM_ADDR);
+		regs_sysctrl->pciea_in_mem_addr_start[0] = pciea_non_mem.start;
+		regs_sysctrl->pciea_in_mem_addr_limit[0] = pciea_non_mem.end;
+		regs_sysctrl->pciea_pom_mem_addr_offset[0] = pciea_non_mem.start;
 
 		/* Set PCIeA mem1 region to be 2nd 16MB of the 64MB PCIeA window */
-		writel(pciea_pre_mem.start,	SYS_CTRL_PCIEA_IN1_MEM_ADDR);
-		writel(pciea_pre_mem.end,	SYS_CTRL_PCIEA_IN1_MEM_LIMIT);
-		writel(pciea_pre_mem.start,	SYS_CTRL_PCIEA_POM1_MEM_ADDR);
+		regs_sysctrl->pciea_in_mem_addr_start[1] = pciea_pre_mem.start;
+		regs_sysctrl->pciea_in_mem_addr_limit[1] = pciea_pre_mem.end;
+		regs_sysctrl->pciea_pom_mem_addr_offset[1] = pciea_pre_mem.start;
 
 		/* Set PCIeA io to be third 16M region of the 64MB PCIeA window*/
-		writel(pciea_io_mem.start,	SYS_CTRL_PCIEA_IN_IO_ADDR);
-		writel(pciea_io_mem.end,	SYS_CTRL_PCIEA_IN_IO_LIMIT);
+		regs_sysctrl->pciea_in_io_addr_start = pciea_io_mem.start;
+		regs_sysctrl->pciea_in_io_addr_limit = pciea_io_mem.end;
 
-		/* Set PCIeA cgf0 to be last 16M region of the 64MB PCIeA window*/
-		writel(pciea_io_mem.end + 1,   SYS_CTRL_PCIEA_IN_CFG0_ADDR);
-		writel(PCIEA_CLIENT_BASE_PA + TOTAL_WINDOW_SIZE - 1, SYS_CTRL_PCIEA_IN_CFG0_LIMIT);
+		/* Set PCIeA cfg0 to be last 16M region of the 64MB PCIeA window*/
+		regs_sysctrl->pciea_in_cfg_addr_start[0] = pciea_io_mem.end + 1;
+		regs_sysctrl->pciea_in_cfg_addr_limit[0] = PCIEA_CLIENT_BASE_PA + TOTAL_WINDOW_SIZE - 1;
 		wmb();
 
 		/* Enable outbound address translation */
-		writel(readl(SYS_CTRL_PCIEA_CTRL) | (1UL << SYS_CTRL_PCIE_OBTRANS_BIT), SYS_CTRL_PCIEA_CTRL);
+		regs_sysctrl->pciea_ctrl |= MSK_OX820_SYSCTRL_PCIE_CTRL_OBTRANS;
 		wmb();
 
 		/*
@@ -764,16 +780,16 @@ void __init ox820_pci_preinit(void)
 		   should deliver properly configured PHYs */
 
 		/* Bring up the PCI core */
-		writel(readl(SYS_CTRL_PCIEA_CTRL) | (1UL << SYS_CTRL_PCIE_LTSSM_BIT), SYS_CTRL_PCIEA_CTRL);
+		regs_sysctrl->pciea_ctrl |= MSK_OX820_SYSCTRL_PCIE_CTRL_LTSSM_ENABLE;
 		wmb();
 
 		/* Poll for PCIEA link up */
 		end = jiffies + (LINK_UP_TIMEOUT_SECONDS * HZ);
-		while (!(readl(SYS_CTRL_PCIEA_CTRL) & (1UL << SYS_CTRL_PCIE_LINK_UP_BIT))) {
+		while (!(regs_sysctrl->pciea_ctrl & MSK_OX820_SYSCTRL_PCIE_CTRL_LINK_UP)) {
 			if (time_after(jiffies, end)) {
 				link_up[0] = 0;
-				printk(KERN_WARNING "ox820_pci_preinit() PCIEA link up timeout (%p)\n",
-					(void*)readl(SYS_CTRL_PCIEA_CTRL));
+				printk(KERN_WARNING "ox820_pci_preinit() PCIEA link up timeout (%08x)\n",
+					sysctrl->pciea_ctrl);
 				break;
 			}
 		}
@@ -784,13 +800,13 @@ void __init ox820_pci_preinit(void)
 	 */
 	if (link_up[1]) {
 		/* Set PCIe core into RootCore mode */
-		writel(SYS_CTRL_PCIE_DEVICE_TYPE_ROOT << SYS_CTRL_PCIE_DEVICE_TYPE_BIT, SYS_CTRL_PCIEB_CTRL);
+		regs_sysctrl->pcieb_ctrl = VAL_OX820_SYSCTRL_PCIE_CTRL_DEVICE_TYPE_ROOT;
 		wmb();
 
 		/* Pulse PCIe core reset, so take new RootCore mode I assume */
-		writel(1UL << SYS_CTRL_RSTEN_PCIEB_BIT, SYS_CTRL_RSTEN_SET_CTRL);
+		regs_sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_PCIEB;
 		wmb();
-		writel(1UL << SYS_CTRL_RSTEN_PCIEB_BIT, SYS_CTRL_RSTEN_CLR_CTRL);
+		regs_sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_PCIEB;
 		wmb();
 
 		/*
@@ -798,7 +814,7 @@ void __init ox820_pci_preinit(void)
 		 * to access anywhere in the AHB address map. Might be regarded as a bit
 		 * dangerous, but let's get things working before we worry about that
 		 */
-		writel(0 << ENABLE_IN_ADDR_TRANS_BIT, IB_ADDR_XLATE_ENABLE);
+		regs_pcieb_elbi->ib_addr_xlate_enable = VAL_OX820_PCIE_ELBI_XLATE_ENABLE_OFF;
 		wmb();
 
 		/*
@@ -825,26 +841,26 @@ void __init ox820_pci_preinit(void)
 		 */
 
 		/* Set PCIeB mem0 region to be 1st 16MB of the 64MB PCIeB window */
-		writel(pcieb_non_mem.start,	SYS_CTRL_PCIEB_IN0_MEM_ADDR);
-		writel(pcieb_non_mem.end,	SYS_CTRL_PCIEB_IN0_MEM_LIMIT);
-		writel(pcieb_non_mem.start,	SYS_CTRL_PCIEB_POM0_MEM_ADDR);
+		regs_sysctrl->pcieb_in_mem_addr_start[0] = pcieb_non_mem.start;
+		regs_sysctrl->pcieb_in_mem_addr_limit[0] = pcieb_non_mem.end;
+		regs_sysctrl->pcieb_pom_mem_addr_offset[0] = pcieb_non_mem.start;
 
 		/* Set PCIeB mem1 region to be 2nd 16MB of the 64MB PCIeB window */
-		writel(pcieb_pre_mem.start,	SYS_CTRL_PCIEB_IN1_MEM_ADDR);
-		writel(pcieb_pre_mem.end,	SYS_CTRL_PCIEB_IN1_MEM_LIMIT);
-		writel(pcieb_pre_mem.start,	SYS_CTRL_PCIEB_POM1_MEM_ADDR);
+		regs_sysctrl->pcieb_in_mem_addr_start[1] = pcieb_pre_mem.start;
+		regs_sysctrl->pcieb_in_mem_addr_limit[1] = pcieb_pre_mem.end;
+		regs_sysctrl->pcieb_pom_mem_addr_offset[1] = pcieb_pre_mem.start;
 
 		/* Set PCIeB io to be third 16M region of the 64MB PCIeA window*/
-		writel(pcieb_io_mem.start,	SYS_CTRL_PCIEB_IN_IO_ADDR);
-		writel(pcieb_io_mem.end,	SYS_CTRL_PCIEB_IN_IO_LIMIT);
+		regs_sysctrl->pcieb_in_io_addr_start = pcieb_io_mem.start;
+		regs_sysctrl->pcieb_in_io_addr_limit = pcieb_io_mem.end;
 
-		/* Set PCIeB cgf0 to be last 16M region of the 64MB PCIeB window*/
-		writel(pcieb_io_mem.end + 1,   SYS_CTRL_PCIEB_IN_CFG0_ADDR);
-		writel(PCIEB_CLIENT_BASE_PA + TOTAL_WINDOW_SIZE - 1, SYS_CTRL_PCIEB_IN_CFG0_LIMIT);
+		/* Set PCIeB cfg0 to be last 16M region of the 64MB PCIeB window*/
+		regs_sysctrl->pcieb_in_cfg_addr_start[0] = pcieb_io_mem.end + 1;
+		regs_sysctrl->pcieb_in_cfg_addr_limit[0] = PCIEB_CLIENT_BASE_PA + TOTAL_WINDOW_SIZE - 1;
 		wmb();
 
 		/* Enable outbound address translation */
-		writel(readl(SYS_CTRL_PCIEB_CTRL) | (1UL << SYS_CTRL_PCIE_OBTRANS_BIT), SYS_CTRL_PCIEB_CTRL);
+		regs_sysctrl->pcieb_ctrl |= MSK_OX820_SYSCTRL_PCIE_CTRL_OBTRANS;
 		wmb();
 
 		/*
@@ -860,11 +876,11 @@ void __init ox820_pci_preinit(void)
 		   should deliver properly configured PHYs */
 
 		/* Bring up the PCI core */
-		writel(readl(SYS_CTRL_PCIEB_CTRL) | (1UL << SYS_CTRL_PCIE_LTSSM_BIT), SYS_CTRL_PCIEB_CTRL);
+		regs_sysctrl->pcieb_ctrl |= MSK_OX820_SYSCTRL_PCIE_CTRL_LTSSM_ENABLE;
 
 		/* Poll for PCIEB link up */
 		end = jiffies + (LINK_UP_TIMEOUT_SECONDS * HZ);
-		while (!(readl(SYS_CTRL_PCIEB_CTRL) & (1UL << SYS_CTRL_PCIE_LINK_UP_BIT))) {
+		while (!(regs_sysctrl->pcieb_ctrl & MSK_OX820_SYSCTRL_PCIE_CTRL_LINK_UP)) {
 			if (time_after(jiffies, end)) {
 				link_up[1] = 0;
 				printk(KERN_WARNING "ox820_pci_preinit() PCIEB link up timeout (%p)\n",
@@ -886,14 +902,14 @@ static struct hw_pci ox820_pci __initdata = {
 
 static int __init ox820_pci_init(void)
 {
-//printk(KERN_INFO "ox820_pci_init()\n");
-    pci_common_init(&ox820_pci);
+	//printk(KERN_INFO "ox820_pci_init()\n");
+   	pci_common_init(&ox820_pci);
 	return 0;
 }
 
 static void __exit ox820_pci_exit(void)
 {
-//printk(KERN_INFO "ox820_pci_exit()\n");
+	//printk(KERN_INFO "ox820_pci_exit()\n");
 }
 
 subsys_initcall(ox820_pci_init);
