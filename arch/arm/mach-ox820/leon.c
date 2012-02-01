@@ -33,6 +33,8 @@ int ox820_request_leon(struct platform_device* dev)
 	return ret;
 }
 
+EXPORT_SYMBOL(ox820_request_leon);
+
 int ox820_release_leon(struct platform_device* dev)
 {
 	unsigned long flags;
@@ -49,7 +51,9 @@ int ox820_release_leon(struct platform_device* dev)
 	return ret;
 }
 
-int ox820_set_clock(enum ox820_leon_clockmode_t clkmode)
+EXPORT_SYMBOL(ox820_release_leon);
+
+int ox820_leon_set_clock(enum ox820_leon_clockmode_t clkmode)
 {
 	unsigned long flags;
 	int ret = -EPERM;
@@ -73,6 +77,8 @@ int ox820_set_clock(enum ox820_leon_clockmode_t clkmode)
 	return ret;
 }
 
+EXPORT_SYMBOL(ox820_leon_set_clock);
+
 int ox820_start_leon(dma_addr_t startaddr)
 {
 	unsigned long flags;
@@ -82,16 +88,29 @@ int ox820_start_leon(dma_addr_t startaddr)
 
 	if(!(regs_sysctrl->cken_stat & MSK_OX820_SYSCTRL_CKEN_LEON)) {
 		ret = 0;
+		regs_sysctrl->cken_clr_ctrl = MSK_OX820_SYSCTRL_CKEN_LEON;
+		wmb();
+		regs_sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_LEON;
+		wmb();
+		regs_sysctrl->cken_set_ctrl = MSK_OX820_SYSCTRL_CKEN_LEON;
+		wmb();
 		regs_secctrl->leon_ctrl = (startaddr & (MSK_OX820_SECCTRL_LEON_CTRL_START_ADDR)) |
 					(regs_secctrl->leon_ctrl & (~MSK_OX820_SECCTRL_LEON_CTRL_START_ADDR));
-		regs_sysctrl->cken_set_ctrl = MSK_OX820_SYSCTRL_CKEN_LEON;
+		wmb();
+		regs_sysctrl->cken_clr_ctrl = MSK_OX820_SYSCTRL_CKEN_LEON;
+		wmb();
 		regs_sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_LEON;
+		wmb();
+		regs_sysctrl->cken_set_ctrl = MSK_OX820_SYSCTRL_CKEN_LEON;
+		wmb();
 		/* Leon is now started at the provided physical start address */
 	}
 	spin_unlock_irqrestore(&ox820_leon_lock, flags);
 
 	return ret;
 }
+
+EXPORT_SYMBOL(ox820_start_leon);
 
 int ox820_stop_leon(void)
 {
@@ -103,7 +122,9 @@ int ox820_stop_leon(void)
 	if(regs_sysctrl->cken_stat & MSK_OX820_SYSCTRL_CKEN_LEON) {
 		ret = 0;
 		regs_sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_LEON;
+		wmb();
 		regs_sysctrl->cken_clr_ctrl = MSK_OX820_SYSCTRL_CKEN_LEON;
+		wmb();
 		/* Leon is now stopped */
 	}
 	spin_unlock_irqrestore(&ox820_leon_lock, flags);
@@ -111,12 +132,16 @@ int ox820_stop_leon(void)
 	return ret;
 }
 
+EXPORT_SYMBOL(ox820_stop_leon);
+
 int ox820_is_leon_running(void)
 {
 	return (regs_sysctrl->cken_stat & MSK_OX820_SYSCTRL_CKEN_LEON) != 0;
 }
 
-int ox820_leon_trigger_irq2(void)
+EXPORT_SYMBOL(ox820_is_leon_running);
+
+int ox820_leon_trigger_irq2(int active)
 {
 	unsigned long flags;
 	int ret = -EPERM;
@@ -125,12 +150,18 @@ int ox820_leon_trigger_irq2(void)
 
 	if(regs_sysctrl->cken_stat & MSK_OX820_SYSCTRL_CKEN_LEON) {
 		ret = 0;
-		regs_secctrl->leon_ctrl = 1;
+		if(active) {
+			regs_secctrl->leon_ctrl |= MSK_OX820_SECCTRL_LEON_CTRL_PROMOTE_IRQ;
+		} else {
+			regs_secctrl->leon_ctrl &= (~MSK_OX820_SECCTRL_LEON_CTRL_PROMOTE_IRQ);
+		}
 	}
 	spin_unlock_irqrestore(&ox820_leon_lock, flags);
 
 	return ret;
 }
+
+EXPORT_SYMBOL(ox820_leon_trigger_irq2);
 
 int ox820_leon_trigger_rps_softirq(void)
 {
@@ -148,3 +179,5 @@ int ox820_leon_trigger_rps_softirq(void)
 
 	return ret;
 }
+
+EXPORT_SYMBOL(ox820_leon_trigger_rps_softirq);
