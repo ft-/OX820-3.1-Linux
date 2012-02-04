@@ -304,7 +304,7 @@ ox820_gmac_dma_rx_desc_attach_skb(struct ox820_gmac_t* gmac,
 		skb_reserve(skb, NET_IP_ALIGN);
 
 		rx_dmacb->hw.buffer1 = dma_map_single(0, skb->tail, MAX_JUMBO, DMA_FROM_DEVICE);
-		rx_dmacb->hw.frag_length = MAX_JUMBO;
+		rx_dmacb->frag_length = MAX_JUMBO;
 
 		if(dma_mapping_error(0, rx_dmacb->hw.buffer1))
 		{

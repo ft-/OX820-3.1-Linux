@@ -23,6 +23,10 @@
 #include <mach/hardware.h>
 #include <mach/leon.h>
 #include <linux/irq.h>
+#include <linux/in.h>
+#include <net/ip.h>
+#include <linux/udp.h>
+#include <linux/tcp.h>
 #include <linux/netdevice.h>
 #include <linux/interrupt.h>
 #include <linux/sched.h>
@@ -32,6 +36,7 @@
 #include <linux/printk.h>
 #include <linux/etherdevice.h>
 #include <linux/crc32.h>
+#include <linux/ip.h>
 
 static const int MIN_PACKET_SIZE = 68;
 static const int MAX_JUMBO = (8*1024);
@@ -222,4 +227,32 @@ typedef struct tx_frag_info {
 
 #define OX820_MS_TO_JIFFIES(x) (((x) < (1000/(HZ))) ? 1 : (x) * (HZ) / 1000)
 
+
+static int inline is_ip_packet(unsigned short eth_protocol)
+{
+    return (eth_protocol == ETH_P_IP)
+#ifdef CONFIG_OX820_GMAC_IPV6_OFFLOAD
+		|| (eth_protocol == ETH_P_IPV6)
+#endif // CONFIG_OXNAS_IPV6_OFFLOAD
+		;
+}
+
+static int inline is_ipv4_packet(unsigned short eth_protocol)
+{
+    return eth_protocol == ETH_P_IP;
+}
+
+#ifdef CONFIG_OX820_GMAC_IPV6_OFFLOAD
+static int inline is_ipv6_packet(unsigned short eth_protocol)
+{
+    return eth_protocol == ETH_P_IPV6;
+}
+#endif // CONFIG_OXNAS_IPV6_OFFLOAD
+
+static int inline is_hw_checksummable(unsigned short protocol)
+{
+    return (protocol == IPPROTO_TCP) ||
+		   (protocol == IPPROTO_UDP) ||
+		   (protocol == IPPROTO_ICMP) ;
+}
 #endif
