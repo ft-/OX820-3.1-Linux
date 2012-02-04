@@ -8,6 +8,7 @@
 #define _ox820_hw_sata_h
 
 #include <linux/types.h>
+#include <linux/dma-mapping.h>
 #include <mach/hw/dma.h>
 #include <mach/hw/sgdma.h>
 #include <mach/hw/cipher.h>

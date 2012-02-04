@@ -9,6 +9,147 @@
 
 #include <linux/types.h>
 
+/* DMA descriptor block */
+struct ox820_gmac_dma_desc_t {
+    /** The encoded status field of the GMAC descriptor */
+    u32 status;
+    /** The encoded length field of GMAC descriptor */
+    u32 length;
+    /** Buffer 1 pointer field of GMAC descriptor */
+    u32 buffer1;
+    /** Buffer 2 pointer or next descriptor pointer field of GMAC descriptor */
+    u32 buffer2;
+};
+
+/* status (rx_desc) */
+#define MSK_OX820_GMAC_DMA_RX_STATUS_OWN	0x80000000
+#define BIT_OX820_GMAC_DMA_RX_STATUS_OWN	31
+#define MSK_OX820_GMAC_DMA_RX_STATUS_AFM	0x40000000
+#define BIT_OX820_GMAC_DMA_RX_STATUS_AFM	30
+#define MSK_OX820_GMAC_DMA_RX_STATUS_FL		0x3FFF0000
+#define BIT_OX820_GMAC_DMA_RX_STATUS_FL		16
+#define MSK_OX820_GMAC_DMA_RX_STATUS_ES		0x00008000
+#define BIT_OX820_GMAC_DMA_RX_STATUS_ES		15
+#define MSK_OX820_GMAC_DMA_RX_STATUS_DE		0x00004000
+#define BIT_OX820_GMAC_DMA_RX_STATUS_DE		14
+#define MSK_OX820_GMAC_DMA_RX_STATUS_SAF	0x00002000
+#define BIT_OX820_GMAC_DMA_RX_STATUS_SAF	13
+#define MSK_OX820_GMAC_DMA_RX_STATUS_LE		0x00001000
+#define BIT_OX820_GMAC_DMA_RX_STATUS_LE		12
+#define MSK_OX820_GMAC_DMA_RX_STATUS_OE		0x00000800
+#define BIT_OX820_GMAC_DMA_RX_STATUS_OE		11
+#define MSK_OX820_GMAC_DMA_RX_STATUS_VLAN	0x00000400
+#define BIT_OX820_GMAC_DMA_RX_STATUS_VLAN	10
+#define MSK_OX820_GMAC_DMA_RX_STATUS_FS		0x00000200
+#define BIT_OX820_GMAC_DMA_RX_STATUS_FS		9
+#define MSK_OX820_GMAC_DMA_RX_STATUS_LS		0x00000100
+#define BIT_OX820_GMAC_DMA_RX_STATUS_LS		8
+#define MSK_OX820_GMAC_DMA_RX_STATUS_IPC	0x00000080
+#define BIT_OX820_GMAC_DMA_RX_STATUS_IPC	7
+#define MSK_OX820_GMAC_DMA_RX_STATUS_LC		0x00000040
+#define BIT_OX820_GMAC_DMA_RX_STATUS_LC		6
+#define MSK_OX820_GMAC_DMA_RX_STATUS_FT		0x00000020
+#define BIT_OX820_GMAC_DMA_RX_STATUS_FT		5
+#define MSK_OX820_GMAC_DMA_RX_STATUS_RWT	0x00000010
+#define BIT_OX820_GMAC_DMA_RX_STATUS_RWT	4
+#define MSK_OX820_GMAC_DMA_RX_STATUS_RE		0x00000008
+#define BIT_OX820_GMAC_DMA_RX_STATUS_RE		3
+#define MSK_OX820_GMAC_DMA_RX_STATUS_DRE	0x00000004
+#define BIT_OX820_GMAC_DMA_RX_STATUS_DRE	2
+#define MSK_OX820_GMAC_DMA_RX_STATUS_CE		0x00000002
+#define BIT_OX820_GMAC_DMA_RX_STATUS_CE		1
+#define MSK_OX820_GMAC_DMA_RX_STATUS_PCE	0x00000001
+#define BIT_OX820_GMAC_DMA_RX_STATUS_PCE	0
+
+/* status (tx_desc0) */
+#define MSK_OX820_GMAC_DMA_TX_STATUS_OWN	0x80000000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_OWN	31
+#define MSK_OX820_GMAC_DMA_TX_STATUS_IC		0x40000000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_IC		30
+#define MSK_OX820_GMAC_DMA_TX_STATUS_LS		0x20000000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_LS		29
+#define MSK_OX820_GMAC_DMA_TX_STATUS_FS		0x10000000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_FS		28
+#define MSK_OX820_GMAC_DMA_TX_STATUS_DC		0x08000000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_DC		27
+#define MSK_OX820_GMAC_DMA_TX_STATUS_DP		0x08000000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_DP		27
+#define MSK_OX820_GMAC_DMA_TX_STATUS_CIC	0x00C00000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_CIC	22
+#define VAL_OX820_GMAC_DMA_TX_STATUS_CIC_NONE	0x00000000
+#define VAL_OX820_GMAC_DMA_TX_STATUS_CIC_HDR	0x00400000
+#define VAL_OX820_GMAC_DMA_TX_STATUS_CIC_PAYLD	0x00800000
+#define VAL_OX820_GMAC_DMA_TX_STATUS_CIC_FULL	0x00C00000
+#define MSK_OX820_GMAC_DMA_TX_STATUS_TER	0x00200000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_TER	21
+#define MSK_OX820_GMAC_DMA_TX_STATUS_TCH	0x00100000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_TCH	20
+#define MSK_OX820_GMAC_DMA_TX_STATUS_IHE	0x00010000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_IHE	16
+#define MSK_OX820_GMAC_DMA_TX_STATUS_ES		0x00008000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_ES		15
+#define MSK_OX820_GMAC_DMA_TX_STATUS_JT		0x00004000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_JT		14
+#define MSK_OX820_GMAC_DMA_TX_STATUS_FF		0x00002000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_FF		13
+#define MSK_OX820_GMAC_DMA_TX_STATUS_IPE	0x00001000
+#define BIT_OX820_GMAC_DMA_TX_STATUS_IPE	12
+#define MSK_OX820_GMAC_DMA_TX_STATUS_LOC	0x00000800
+#define BIT_OX820_GMAC_DMA_TX_STATUS_LOC	11
+#define MSK_OX820_GMAC_DMA_TX_STATUS_NC		0x00000400
+#define BIT_OX820_GMAC_DMA_TX_STATUS_NC		10
+#define MSK_OX820_GMAC_DMA_TX_STATUS_LC		0x00000200
+#define BIT_OX820_GMAC_DMA_TX_STATUS_LC		9
+#define MSK_OX820_GMAC_DMA_TX_STATUS_EC		0x00000100
+#define BIT_OX820_GMAC_DMA_TX_STATUS_EC		8
+#define MSK_OX820_GMAC_DMA_TX_STATUS_VF		0x00000080
+#define BIT_OX820_GMAC_DMA_TX_STATUS_VF		7
+#define MSK_OX820_GMAC_DMA_TX_STATUS_CC		0x00000078
+#define BIT_OX820_GMAC_DMA_TX_STATUS_CC		3
+#define MSK_OX820_GMAC_DMA_TX_STATUS_ED		0x00000004
+#define BIT_OX820_GMAC_DMA_TX_STATUS_ED		2
+#define MSK_OX820_GMAC_DMA_TX_STATUS_UF		0x00000002
+#define BIT_OX820_GMAC_DMA_TX_STATUS_UF		1
+#define MSK_OX820_GMAC_DMA_TX_STATUS_DB		0x00000001
+#define BIT_OX820_GMAC_DMA_TX_STATUS_DB		0
+
+/* length (tx_desc1) */
+#define MSK_OX820_GMAC_DMA_TX_LENGTH_TBS2	0x1FFF0000
+#define BIT_OX820_GMAC_DMA_TX_LENGTH_TBS2	16
+#define MSK_OX820_GMAC_DMA_TX_LENGTH_TBS1	0x00001FFF
+#define BIT_OX820_GMAC_DMA_TX_LENGTH_TBS1	0
+
+
+static inline int is_tx_valid(u32 status)
+{
+    return !(status & MSK_OX820_GMAC_DMA_TX_STATUS_ES);
+}
+
+static inline int is_tx_collision_error(u32 status)
+{
+    return (status & MSK_OX820_GMAC_DMA_TX_STATUS_CC) >> BIT_OX820_GMAC_DMA_TX_STATUS_CC;
+}
+
+static inline int is_tx_aborted(u32 status)
+{
+    return status & (MSK_OX820_GMAC_DMA_TX_STATUS_LC | MSK_OX820_GMAC_DMA_TX_STATUS_EC);
+}
+
+static inline int is_tx_carrier_error(u32 status)
+{
+    return status & (MSK_OX820_GMAC_DMA_TX_STATUS_LOC | MSK_OX820_GMAC_DMA_TX_STATUS_NC);
+}
+
+
+// Rx and Tx descriptors have the same max size for their associated buffers
+#define OX820_GMAC_MAX_DESCRIPTOR_SHIFT		11
+#define OX820_GMAC_MAX_DESCRIPTOR_LENGTH	((1 << OX820_GMAC_MAX_DESCRIPTOR_SHIFT) - 1)
+
+// Round down to nearest quad length
+#define OX820_GMAC_MAX_PACKET_FRAGMENT_LENGTH 	((OX820_GMAC_MAX_DESCRIPTOR_LENGTH >> 2) << 2)
+
+
+/* registers */
 struct ox820_gmac_macaddress_registers_t
 {
 	u32         high;
@@ -40,9 +181,14 @@ struct ox820_gmac_registers_t
 	u32         an_lpa;                     /* +0x00CC */
 	u32         an_exp;                     /* +0x00D0 */
 	u32         tbi_ext_status;             /* +0x00D4 */
-	u32         mii_status;                 /* +0x00D8 */
+	volatile u32 mii_status;                /* +0x00D8 keep the optimization from optimizing the reads we do */
 	u32         reserved_2[9];              /* +0x00DC */
-	u32         mmc_regs[128];              /* +0x0100 */
+	u32	    mmc_control;		/* +0x0100 */
+	u32	    mmc_rx_int;			/* +0x0104 */
+	u32         mmc_tx_int;			/* +0x0108 */
+	u32         mmc_rx_mask;		/* +0x010C */
+	u32         mmc_tx_mask;		/* +0x0110 */
+	u32         mmc_regs[123];              /* +0x0114 */
 	u32         reserved_3[256];            /* +0x0300 */
 	u32         ts_control;                 /* +0x0700 */
 	u32         ts_subsec_inc;              /* +0x0704 */
@@ -66,7 +212,7 @@ struct ox820_gmac_registers_t
 	u32         dma_rx_poll_demand;         /* +0x1008 */
 	u32         dma_rx_descriptor_list;     /* +0x100C */
 	u32         dma_tx_descriptor_list;     /* +0x1010 */
-	u32         dma_status;                 /* +0x1014 */
+	volatile u32 dma_status;                /* +0x1014 keep the optimizer from optimizing away write back same value */
 	u32         dma_opmode;                 /* +0x1018 */
 	u32         dma_intenable;              /* +0x101C */
 	u32         dma_miss_frame_bufovfl_cnt; /* +0x1020 */
@@ -132,7 +278,7 @@ struct ox820_gmac_registers_t
 #define BIT_OX820_GMAC_MAC_CONFIG_LUD                   8
 
 #define MSK_OX820_GMAC_MAC_CONFIG_ACS                   0x00000080
-#define BIT_OX820_GMAC_MAC_CONIFG_ACS                   7
+#define BIT_OX820_GMAC_MAC_CONFIG_ACS                   7
 
 #define MSK_OX820_GMAC_MAC_CONFIG_BL                    0x00000060
 #define BIT_OX820_GMAC_MAC_CONFIG_BL                    5
@@ -387,8 +533,24 @@ struct ox820_gmac_registers_t
 #define BIT_OX820_GMAC_DMA_STATUS_EB                    23
 #define MSK_OX820_GMAC_DMA_STATUS_TS                    0x00700000
 #define BIT_OX820_GMAC_DMA_STATUS_TS                    20
+#define VAL_OX820_GMAC_DMA_STATUS_TS_STOPPED		0x00000000
+#define VAL_OX820_GMAC_DMA_STATUS_TS_FETCHING		0x00100000
+#define VAL_OX820_GMAC_DMA_STATUS_TS_WAITING		0x00200000
+#define VAL_OX820_GMAC_DMA_STATUS_TS_READING		0x00300000
+#define VAL_OX820_GMAC_DMA_STATUS_TS_FLUSHING		0x00400000
+#define VAL_OX820_GMAC_DMA_STATUS_TS_RESERVED		0x00500000
+#define VAL_OX820_GMAC_DMA_STATUS_TS_SUSPENDED		0x00600000
+#define VAL_OX820_GMAC_DMA_STATUS_TS_CLOSING		0x00700000
 #define MSK_OX820_GMAC_DMA_STATUS_RS                    0x000E0000
 #define BIT_OX820_GMAC_DMA_STATUS_RS                    17
+#define VAL_OX820_GMAC_DMA_STATUS_RS_STOPPED		0x00000000
+#define VAL_OX820_GMAC_DMA_STATUS_RS_FETCHING		0x00020000
+#define VAL_OX820_GMAC_DMA_STATUS_RS_RESERVED_2		0x00040000
+#define VAL_OX820_GMAC_DMA_STATUS_RS_WAITING		0x00060000
+#define VAL_OX820_GMAC_DMA_STATUS_RS_SUSPENDED		0x00080000
+#define VAL_OX820_GMAC_DMA_STATUS_RS_CLOSING		0x000A0000
+#define VAL_OX820_GMAC_DMA_STATUS_RS_RESERVED_6		0x000C0000
+#define VAL_OX820_GMAC_DMA_STATUS_RS_TRANSFERRING	0x000E0000
 #define MSK_OX820_GMAC_DMA_STATUS_NIP                   0x00010000
 #define BIT_OX820_GMAC_DMA_STATUS_NIP                   16
 #define MSK_OX820_GMAC_DMA_STATUS_AIS                   0x00008000
@@ -433,10 +595,18 @@ struct ox820_gmac_registers_t
 #define BIT_OX820_GMAC_DMA_OPMODE_RFD2                  22
 #define MSK_OX820_GMAC_DMA_OPMODE_TSF                   0x00200000
 #define BIT_OX820_GMAC_DMA_OPMODE_TSF                   21
-#define MSK_OX820_GMAC_DMA_OPMODE_TTC                   0x0007C000
+#define MSK_OX820_GMAC_DMA_OPMODE_TTC                   0x0001C000
 #define BIT_OX820_GMAC_DMA_OPMODE_TTC                   14
+#define VAL_OX820_GMAC_DMA_OPMODE_TTC_16		0x0001C000
+#define VAL_OX820_GMAC_DMA_OPMODE_TTC_24		0x00018000
+#define VAL_OX820_GMAC_DMA_OPMODE_TTC_32		0x00014000
+#define VAL_OX820_GMAC_DMA_OPMODE_TTC_40		0x00010000
+#define VAL_OX820_GMAC_DMA_OPMODE_TTC_256		0x0000C000
+#define VAL_OX820_GMAC_DMA_OPMODE_TTC_192		0x00008000
+#define VAL_OX820_GMAC_DMA_OPMODE_TTC_128		0x00004000
+#define VAL_OX820_GMAC_DMA_OPMODE_TTC_64		0x00000000
 #define MSK_OX820_GMAC_DMA_OPMODE_ST                    0x00004000
-#deifne BIT_OX820_GMAC_DMA_OPMODE_ST                    13
+#define BIT_OX820_GMAC_DMA_OPMODE_ST                    13
 #define MSK_OX820_GMAC_DMA_OPMODE_RFD                   0x00003000
 #define BIT_OX820_GMAC_DMA_OPMODE_RFD                   11
 #define MSK_OX820_GMAC_DMA_OPMODE_RFA                   0x00001E00
@@ -449,9 +619,14 @@ struct ox820_gmac_registers_t
 #define BIT_OX820_GMAC_DMA_OPMODE_FUF                   6
 #define MSK_OX820_GMAC_DMA_OPMODE_RTC                   0x00000018
 #define BIT_OX820_GMAC_DMA_OPMODE_RTC                   3
+#define VAL_OX820_GMAC_DMA_OPMODE_RTC_64		0x00000000
+#define VAL_OX820_GMAC_DMA_OPMODE_RTC_32		0x00000008
+#define VAL_OX820_GMAC_DMA_OPMODE_RTC_96		0x00000010
+#define VAL_OX820_GMAC_DMA_OPMODE_RTC_128		0x00000018
 #define MSK_OX820_GMAC_DMA_OPMODE_OSF                   0x00000004
 #define BIT_OX820_GMAC_DMA_OPMODE_OSF                   2
 #define MSK_OX820_GMAC_DMA_OPMODE_SR                    0x00000002
+#define BIT_OX820_GMAC_DMA_OPMODE_SR			1
 
 /* dma_intenable */
 #define MSK_OX820_GMAC_DMA_INTENABLE_NIE                0x00010000
@@ -516,5 +691,25 @@ struct ox820_gmac_registers_t
 #define BIT_OX820_GMAC_HW_FEATURE_1000MBPS              1
 #define MSK_OX820_GMAC_HW_FEATURE_10_100MBPS            0x00000001
 #define BIT_OX820_GMAC_HW_FEATURE_10_100MBPS            0
+
+/* interrupt_status */
+#define MSK_OX820_GMAC_INT_STATUS_TIMESTAMP 		0x00000200
+#define BIT_OX820_GMAC_INT_STATUS_TIMESTAMP 		9
+#define MSK_OX820_GMAC_INT_STATUS_MMC_RX_CHKSUM_OFFLOAD	0x00000080
+#define BIT_OX820_GMAC_INT_STATUS_MMC_RX_CHKSUM_OFFLOAD	7
+#define MSK_OX820_GMAC_INT_STATUS_MMC_TRANSMIT		0x00000040
+#define BIT_OX820_GMAC_INT_STATUS_MMC_TRANSMIT		6
+#define MSK_OX820_GMAC_INT_STATUS_MMC_RECEIVE		0x00000020
+#define BIT_OX820_GMAC_INT_STATUS_MMC_RECEIVE		5
+#define MSK_OX820_GMAC_INT_STATUS_MMC			0x00000010
+#define BIT_OX820_GMAC_INT_STATUS_MMC			4
+#define MSK_OX820_GMAC_INT_STATUS_PMT			0x00000008
+#define BIT_OX820_GMAC_INT_STATUS_PMT			3
+#define MSK_OX820_GMAC_INT_STATUS_PCS_AN_COMPLETE	0x00000004
+#define BIT_OX820_GMAC_INT_STATUS_PCS_AN_COMPLETE	2
+#define MSK_OX820_GMAC_INT_STATUS_PCS_LNK_STAT_CHGD	0x00000002
+#define BIT_OX820_GMAC_INT_STATUS_PCS_LNK_STAT_CHGD	1
+#define MSK_OX820_GMAC_INT_STATUS_RGMII_SMII		0x00000001
+#define BIT_OX820_GMAC_INT_STATUS_RGMII_SMII		0
 
 #endif

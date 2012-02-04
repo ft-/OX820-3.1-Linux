@@ -2565,6 +2565,8 @@ config FTGMAC100
 
 source "drivers/net/gmac/Kconfig"
 
+source "drivers/net/ox820_gmac/Kconfig"
+
 endif # NETDEV_1000
 
 #
