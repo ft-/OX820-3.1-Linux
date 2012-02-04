@@ -316,3 +316,35 @@ ox820_gmac_dma_rx_desc_attach_skb(struct ox820_gmac_t* gmac,
 
 	return skb;
 }
+
+/*=============================================================================*/
+void
+ox820_gmac_dma_schedule_rx(struct ox820_gmac_t* gmac)
+{
+	struct ox820_gmac_dma_request_ctrlblock_t* dmacb;
+
+	while(NULL != (dmacb = gmac->dma.incomplete_rx_ctrlblocks_head)) {
+		if(NULL == ox820_gmac_dma_rx_desc_attach_skb(gmac, dmacb)) {
+			break;
+		}
+		gmac->dma.incomplete_rx_ctrlblocks_head = dmacb->next;
+		if(NULL == gmac->dma.incomplete_rx_ctrlblocks_head) {
+			gmac->dma.incomplete_rx_ctrlblocks_tail = NULL;
+		}
+		if(NULL == gmac->dma.unused_rx_ctrlblocks_head) {
+			gmac->dma.unused_rx_ctrlblocks_head = dmacb;
+		} else {
+			gmac->dma.unused_rx_ctrlblocks_tail->next = dmacb;
+			gmac->dma.unused_rx_ctrlblocks_tail->hw.buffer2 = dmacb->phys_addr;
+		}
+		gmac->dma.incomplete_rx_ctrlblocks_tail = dmacb;
+		dmacb->hw.buffer2 = 0;
+		dmacb->next = NULL;
+	}
+
+	/* we went through the list, so attach it to the dma */
+	gmac->dma.active_rx_ctrlblocks = gmac->dma.unused_rx_ctrlblocks_head;
+	gmac->dma.unused_rx_ctrlblocks_head = NULL;
+	gmac->dma.unused_rx_ctrlblocks_tail = NULL;
+	gmac->gmac_regs->dma_rx_descriptor_list = gmac->dma.active_rx_ctrlblocks->phys_addr;
+}
