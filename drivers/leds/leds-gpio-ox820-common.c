@@ -22,18 +22,24 @@
 static void ox820_program_pwm(struct ox820_gpio_led* led_dat, 
 						unsigned brightness)
 {
-	struct ox820_gpio_registers_t* gpio;
-	unsigned int gpio_bit = led_dat->gpio & 31;
-	if(led_dat->gpio >= 32) {
-		gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
-	} else {
-		gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-	}
 	if(led_dat->active_low) {
 		brightness = 255 - brightness;
+		if(led_dat->gpio < SYS_CTRL_NUM_PINS) {
+			writel(brightness, GPIO_A_PWM_VALUE_0 + led_dat->gpio * 8);
+			writel(0, GPIO_A_RR_0 + led_dat->gpio * 8);
+		} else {
+			writel(brightness, GPIO_B_PWM_VALUE_0 + (led_dat->gpio - SYS_CTRL_NUM_PINS) * 8);
+			writel(0, GPIO_B_RR_0 + (led_dat->gpio - SYS_CTRL_NUM_PINS) * 8);
+		}
+	} else {
+		if(led_dat->gpio < SYS_CTRL_NUM_PINS) {
+			writel(brightness, GPIO_A_PWM_VALUE_0 + led_dat->gpio * 8);
+			writel(0, GPIO_A_RR_0 + led_dat->gpio * 8);
+		} else {
+			writel(brightness, GPIO_B_PWM_VALUE_0 + (led_dat->gpio - SYS_CTRL_NUM_PINS) * 8);
+			writel(0, GPIO_B_RR_0 + (led_dat->gpio - SYS_CTRL_NUM_PINS) * 8);
+		}
 	}
-	gpio->pwm[gpio_bit].pwm_value = brightness;
-	gpio->pwm[gpio_bit].rr = 0;
 }
 
 static void ox820_gpioleds_set(struct led_classdev* led_cdev,

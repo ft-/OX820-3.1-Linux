@@ -31,7 +31,6 @@
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
 #include <mach/hardware.h>
-#include <mach/hw/gpio.h>
 
 #if 0
 #define ox820_printk(x...) printk(x)

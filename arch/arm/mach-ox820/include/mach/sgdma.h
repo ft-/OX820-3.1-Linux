@@ -39,14 +39,6 @@ struct ox820_sgdma_request_t
 	struct ox820_sgdma_request_entry_t	entries[];
 };
 
-
-#define OX820_PRD_MAX_LEN (64*1024)
-#define OX820_PRD_EOF_MASK (1UL << 31)
-struct ox820_prd_table_entry {
-	dma_addr_t adr;
-	u32        flags_len;
-};
-
 /**************************************/
 /* Basic function for SGDMA request blocks */
 /* entries[x].hw.addr and entries[x].hw.length must be set up on caller's side */
