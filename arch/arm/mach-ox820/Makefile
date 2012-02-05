@@ -5,7 +5,6 @@
 # Object file lists.
 
 obj-y := pci.o rps-irq.o rps-timer.o localtimer.o 
-obj-$(CONFIG_ARCH_OX820) += ox820.o mfctrl.o sgdma.o
+obj-$(CONFIG_ARCH_OX820) += ox820.o
 obj-$(CONFIG_SMP) += platsmp.o headsmp.o
-obj-$(CONFIG_SUPPORT_LEON) += leon.o
 obj-$(CONFIG_HOTPLUG_CPU) += hotplug.o

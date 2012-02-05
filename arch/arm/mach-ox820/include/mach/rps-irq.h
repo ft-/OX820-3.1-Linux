@@ -38,6 +38,11 @@
 #define RPSA_IRQ_DISABLE    (RPSA_BASE + RPS_IRQ_DISABLE   )
 #define RPSA_IRQ_SOFT       (RPSA_BASE + RPS_IRQ_SOFT      )
 
-extern void ox820_rps_init_irq(void);
+struct OX820_RPS_chip_data {
+	unsigned int irq_offset;
+};
+
+extern void OX820_RPS_init_irq(unsigned int start, unsigned int end);
+extern void OX820_RPS_cascade_irq(unsigned int irq);
 extern void OX820_RPS_trigger_fiq(unsigned int cpu);
 extern void OX820_RPS_clear_fiq(unsigned int cpu);

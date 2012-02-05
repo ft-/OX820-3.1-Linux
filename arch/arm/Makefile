@@ -202,7 +202,6 @@ machine-$(CONFIG_ARCH_ZYNQ)		:= zynq
 # by CONFIG_* macro name.
 plat-$(CONFIG_ARCH_MXC)		:= mxc
 plat-$(CONFIG_ARCH_OMAP)	:= omap
-plat-$(CONFIG_ARCH_OX820)   := ox820
 plat-$(CONFIG_ARCH_S3C64XX)	:= samsung
 plat-$(CONFIG_ARCH_TCC_926)	:= tcc
 plat-$(CONFIG_ARCH_ZYNQ)	:= versatile

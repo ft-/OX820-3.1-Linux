@@ -23,106 +23,120 @@
 #include <asm/mach/irq.h>
 #include <mach/hardware.h>
 #include <mach/rps-irq.h>
-#include <mach/hw/rpsa.h>
 
 /* change the system interrupt number into an RPS interrupt number */
-static inline unsigned int ox820_rps_irq_to_bitno(struct irq_data *d) {
-	return d->irq - OX820_RPSA_IRQ_START;
+static inline unsigned int OX820_RPS_irq(struct irq_data *d) {
+	struct OX820_RPS_chip_data* chip_data = irq_data_get_irq_chip_data(d);
+	return d->irq - chip_data->irq_offset;
 }
 
-static void ox820_rps_ack_irq(struct irq_data *d)
+static void OX820_RPS_mask_irq(struct irq_data *d)
 {
-    struct ox820_rpsa_registers_t* const rpsa = (struct ox820_rpsa_registers_t*) RPSA_BASE;
-    rpsa->irq_disable_control = (1UL << ox820_rps_irq_to_bitno(d));
+    *((volatile unsigned long*)RPSA_IRQ_DISABLE) = (1UL << OX820_RPS_irq(d));
 }
 
-static void ox820_rps_mask_irq(struct irq_data *d)
+static void OX820_RPS_unmask_irq(struct irq_data *d)
 {
-    struct ox820_rpsa_registers_t* const rpsa = (struct ox820_rpsa_registers_t*) RPSA_BASE;
-    rpsa->irq_disable_control = (1UL << ox820_rps_irq_to_bitno(d));
+    *((volatile unsigned long*)RPSA_IRQ_ENABLE) = (1UL << OX820_RPS_irq(d));
 }
 
-static void ox820_rps_unmask_irq(struct irq_data *d)
-{
-    struct ox820_rpsa_registers_t* const rpsa = (struct ox820_rpsa_registers_t*) RPSA_BASE;
-    rpsa->irq_enable_control = (1UL << ox820_rps_irq_to_bitno(d));
-}
-
-static struct irq_chip ox820_rps_chip = {
-	.name		= "ox820-rps",
-	.irq_ack	= ox820_rps_ack_irq,
-	.irq_mask	= ox820_rps_mask_irq,
-	.irq_unmask 	= ox820_rps_unmask_irq,
+static struct irq_chip OX820_RPS_chip = {
+	.name	= "OX820_RPS",
+    .irq_ack	= OX820_RPS_mask_irq,
+    .irq_mask	= OX820_RPS_mask_irq,
+    .irq_unmask = OX820_RPS_unmask_irq,
 };
 
-static void ox820_rps_irq(unsigned int irq, struct irq_desc *desc) {
-	struct ox820_rpsa_registers_t* const rpsa = (struct ox820_rpsa_registers_t*) RPSA_BASE;
+static struct OX820_RPS_chip_data OX820_RPS_irq_data;
+
+static void OX820_RPS_handle_cascade_irq(unsigned int irq, struct irq_desc *desc) {
+	struct OX820_RPS_chip_data* chip_data = irq_get_handler_data(irq);
 	struct irq_chip *chip = irq_get_chip(irq);
-	int rps_irq;
+	unsigned int cascade_irq, rps_irq;
 	unsigned long status;
 
 	chained_irq_enter(chip, desc);	
+	/* primary controller ack'ing */
+//	chip->irq_ack(&desc->irq_data);
 
-	/* read the IRQ number from the RPS core */
-	status = rpsa->irq_mask_status;
+    /* read the IRQ number from the RPS core */
+	status = *((volatile unsigned long*)RPSA_IRQ_STATUS);
 
-	/* convert the RPS interrupt number into a system interrupt number */
-	rps_irq = find_first_bit(&status, BITS_PER_LONG);
-	while(rps_irq < BITS_PER_LONG) {
-		generic_handle_irq(OX820_RPSA_IRQ_START + rps_irq);
-		rps_irq = find_next_bit(&status, BITS_PER_LONG, rps_irq + 1);
-	}
+    /* convert the RPS interrupt number into a system interrupt number */
+	rps_irq = find_first_bit(&status, 31);
+	
+	cascade_irq = rps_irq + 64;//chip_data->irq_offset;
+	
+	if (unlikely(cascade_irq >= NR_IRQS))
+		do_bad_IRQ(cascade_irq, desc);
+	else
+		generic_handle_irq(cascade_irq);
 
+	/* primary controller unmasking */
+//	chip->irq_unmask(&desc->irq_data);
 	chained_irq_exit(chip, desc);
 }
 
-void __init ox820_rps_init_irq() {
-	unsigned irq;
-	struct ox820_rpsa_registers_t* const rpsa = (struct ox820_rpsa_registers_t*) RPSA_BASE;
+/*
+ * Tell the kernel that "irq" is gnerated by our interrupt chip and needs
+ * to run the OX820_RPS_handle_cascade_irq to get the actual source of the
+ * interrupt.
+ */
+void __init OX820_RPS_cascade_irq(unsigned int irq) {
+    /* change the irq chip data to point to the RPS chip data */
+	if (irq_set_handler_data(irq, (void*)&OX820_RPS_irq_data) != 0)
+		BUG();
     
-	printk("ox820_rps_init_irq: interrupts %d to %d\n",OX820_RPSA_IRQ_START,OX820_RPSA_IRQ_START+31);
-	/* Disable all IRQs */
-	rpsa->irq_disable_control = ~0;
-	wmb();
-    
-	/* Initialise IRQ tracking structures */
-	for (irq = OX820_RPSA_IRQ_START; irq < OX820_RPSA_IRQ_START + 32; irq++)
-	{
-		irq_set_chip_and_handler(irq, &ox820_rps_chip, handle_level_irq);
-		set_irq_flags(irq, IRQF_VALID | IRQF_PROBE);
-	}
+    /* setup the handler */
+	irq_set_chained_handler(irq, OX820_RPS_handle_cascade_irq);
+}
 
-	/* setup the handler */
-	irq_set_chained_handler(OX820_ARM_GIC_IRQ_RPSA_IRQ, ox820_rps_irq);
+void __init OX820_RPS_init_irq(unsigned int start, unsigned int end) {
+    unsigned irq;
+
+    printk("OX820_RPS_init_irq: interrupts %d to %d\n",start,end);
+    /* Disable all IRQs */
+    *((volatile unsigned long*)RPSA_IRQ_DISABLE) = ~0UL;
+
+    /* store the offset information */
+    OX820_RPS_irq_data.irq_offset = start;
+    
+    /* Initialise IRQ tracking structures */
+    for (irq = start; irq < end; irq++)
+    {
+        irq_set_chip_and_handler(irq, &OX820_RPS_chip, handle_level_irq);
+        irq_set_chip_data(irq, (void*)&OX820_RPS_irq_data);
+        set_irq_flags(irq, IRQF_VALID | IRQF_PROBE);
+    }
 }
 
 /** 
  * induces a FIQ in the cpu number passed as a parameter
  */
 void OX820_RPS_trigger_fiq(unsigned int cpu) {
-	void* base[2] = {
-	 	 (void* )RPSA_BASE,
-	 	 (void* )RPSC_BASE
-	};
+    void* base[2] = {
+        (void* )RPSA_BASE,
+        (void* )RPSC_BASE
+    };
     
-	*((volatile unsigned long*)(base[cpu] + RPS_FIQ_IRQ_TO_FIQ)) = 1;
-	wmb();
-	*((volatile unsigned long*)(base[cpu] + RPS_FIQ_ENABLE)) = 1;
-	wmb();
-	*((volatile unsigned long*)(base[cpu] + RPS_IRQ_SOFT)) = 2;
-	wmb();
+    *((volatile unsigned long*)(base[cpu] + RPS_FIQ_IRQ_TO_FIQ)) = 1;
+    wmb();
+    *((volatile unsigned long*)(base[cpu] + RPS_FIQ_ENABLE)) = 1;
+    wmb();
+    *((volatile unsigned long*)(base[cpu] + RPS_IRQ_SOFT)) = 2;
+    wmb();
 }
 
 /* clears FIQ mode for the interrupt specified, those interrupts will now 
 be forwarded on the IRQ output line */
 void OX820_RPS_clear_fiq(unsigned int cpu) {
-	void* base[2] = {
-	 	 (void* )RPSA_BASE,
-	 	 (void* )RPSC_BASE
-	};
+    void* base[2] = {
+        (void* )RPSA_BASE,
+        (void* )RPSC_BASE
+    };
     
-	*((volatile unsigned long*)(base[cpu] + RPS_IRQ_SOFT)) = 0;
-	wmb();
-	*((volatile unsigned long*)(base[cpu] + RPS_FIQ_DISABLE)) = 1;
-   	wmb();
+    *((volatile unsigned long*)(base[cpu] + RPS_IRQ_SOFT)) = 0;
+    wmb();
+    *((volatile unsigned long*)(base[cpu] + RPS_FIQ_DISABLE)) = 1;
+    wmb();
 }

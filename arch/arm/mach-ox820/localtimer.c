@@ -22,7 +22,7 @@
  */
 int __cpuinit local_timer_setup(struct clock_event_device *evt)
 {
-	evt->irq = OX820_ARM_GIC_IRQ_LOCAL_TIMER;
+	evt->irq = IRQ_LOCALTIMER;
 	twd_timer_setup(evt);
 	return 0;
 }

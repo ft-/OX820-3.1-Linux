@@ -36,10 +36,8 @@
 #include <mach/hardware.h>
 #include <mach/irqs.h>
 #include <asm/hw_irq.h>
-#include <mach/mfctrl.h>
-#include <mach/hw/gpio.h>
 
-static DEFINE_SPINLOCK(oxnas_gpio_spinlock);
+extern spinlock_t oxnas_gpio_spinlock;
 
 #if 0
 #define ox820_printk(x...) printk(x)
@@ -54,19 +52,13 @@ int ox820_gpiob_irq_base = OX820_GPIO_IRQ_START + 32;
 static irqreturn_t ox820_gpioa_irq_handler(int irq, void* dev_id)
 {
 	unsigned irqidx;
-    struct ox820_gpio_registers_t* gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-	unsigned long irq_event = gpio->irq_event;
-    gpio->irq_event = irq_event;
-    wmb();
-    chained_irq_enter(chip, desc);
-    irqidx = find_first_bit(&irq_event, BITS_PER_LONG);
-    while(irqidx < BITS_PER_LONG) {
+	unsigned long irq_event = readl(GPIO_A_INTERRUPT_EVENT);
+	writel(irq_event, GPIO_A_INTERRUPT_EVENT);
+	for(irqidx = 0; irqidx < 32; ++irqidx) {
 		if(irq_event & (1UL << irqidx)) {
 			generic_handle_irq(ox820_gpioa_irq_base + irqidx);
 		}
-        irqidx = find_next_bit(&irq_event, BITS_PER_LONG, irqidx + 1);
 	}
-    chained_irq_exit(chip, desc);
 	
 	return IRQ_HANDLED;
 }
@@ -75,13 +67,10 @@ static void ox820_gpioa_irq_mask(struct irq_data* d)
 {
 	unsigned long flags;
 	int irqno = d->irq - ox820_gpioa_irq_base;
-    struct ox820_gpio_registers_t* gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-    
 	spin_lock_irqsave(&oxnas_gpio_spinlock, flags);
 	
-    gpio->irq_enable_mask &= (~(1UL << irqno));
-    gpio->irq_event = 1UL << (irqno);
-    wmb();
+	writel(readl(GPIO_A_INTERRUPT_ENABLE) & ~(1UL << (irqno)), GPIO_A_INTERRUPT_ENABLE);
+	writel(1UL << (d->irq), GPIO_A_INTERRUPT_EVENT);
 	
 	spin_unlock_irqrestore(&oxnas_gpio_spinlock, flags);
 }
@@ -90,11 +79,9 @@ static void ox820_gpioa_irq_unmask(struct irq_data* d)
 {
 	unsigned long flags;
 	int irqno = d->irq - ox820_gpioa_irq_base;
-    struct ox820_gpio_registers_t* gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
 	spin_lock_irqsave(&oxnas_gpio_spinlock, flags);
 	
-    gpio->irq_enable_mask |= (1UL << irqno);
-	wmb();
+	writel(readl(GPIO_A_INTERRUPT_ENABLE) | (1UL << (irqno)), GPIO_A_INTERRUPT_ENABLE);
 	
 	spin_unlock_irqrestore(&oxnas_gpio_spinlock, flags);
 }
@@ -102,7 +89,6 @@ static void ox820_gpioa_irq_unmask(struct irq_data* d)
 static int ox820_gpioa_irq_set_type(struct irq_data* d, unsigned int type)
 {
 	unsigned long flags;
-    struct ox820_gpio_registers_t* gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
 	int irqno = d->irq - ox820_gpioa_irq_base;
 	if((type & IRQ_TYPE_EDGE_BOTH) && (type & IRQ_TYPE_LEVEL_MASK)) {
 		printk("ox820_gpio: gpioa irq %d: unsupported type %d\n",
@@ -113,23 +99,22 @@ static int ox820_gpioa_irq_set_type(struct irq_data* d, unsigned int type)
 	spin_lock_irqsave(&oxnas_gpio_spinlock, flags);
 	
 	if((IRQ_TYPE_EDGE_RISING & type) || (IRQ_TYPE_LEVEL_HIGH & type)) {
-        gpio->rising_edge_act_high_irq_enable |= (1UL << irqno);
+		writel(readl(GPIO_A_RISING_EDGE_ACTIVE_HIGH_ENABLE) | (1UL << (irqno)), GPIO_A_RISING_EDGE_ACTIVE_HIGH_ENABLE);
 	} else {
-        gpio->rising_edge_act_high_irq_enable &= (~(1UL << irqno));
+		writel(readl(GPIO_A_RISING_EDGE_ACTIVE_HIGH_ENABLE) & ~(1UL << (irqno)), GPIO_A_RISING_EDGE_ACTIVE_HIGH_ENABLE);
 	}
 	
 	if((IRQ_TYPE_EDGE_FALLING & type) || (IRQ_TYPE_LEVEL_LOW & type)) {
-        gpio->falling_edge_act_low_irq_enable |= (1UL << irqno);
+		writel(readl(GPIO_A_FALLING_EDGE_ACTIVE_LOW_ENABLE) | (1UL << (irqno)), GPIO_A_RISING_EDGE_ACTIVE_HIGH_ENABLE);
 	} else {
-        gpio->falling_edge_act_low_irq_enable &= (~(1UL << irqno));
+		writel(readl(GPIO_A_FALLING_EDGE_ACTIVE_LOW_ENABLE) & ~(1UL << (irqno)), GPIO_A_RISING_EDGE_ACTIVE_HIGH_ENABLE);
 	}
 	
 	if(IRQ_TYPE_LEVEL_MASK & type) {
-        gpio->level_interrupt_enable |= (1UL << irqno);
+		writel(readl(GPIO_A_LEVEL_INTERRUPT_ENABLE) | (1UL << (irqno)), GPIO_A_LEVEL_INTERRUPT_ENABLE);
 	} else {
-        gpio->level_interrupt_enable &= (~(1UL << irqno));
+		writel(readl(GPIO_A_LEVEL_INTERRUPT_ENABLE) & ~(1UL << (irqno)), GPIO_A_LEVEL_INTERRUPT_ENABLE);
 	}
-    wmb();
 		
 	spin_unlock_irqrestore(&oxnas_gpio_spinlock, flags);
 	
@@ -146,19 +131,13 @@ static struct irq_chip gpio_a_irq_chip = {
 static irqreturn_t ox820_gpiob_irq_handler(int irq, void* dev_id)
 {
 	unsigned irqidx;
-    struct ox820_gpio_registers_t* gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
-	unsigned long irq_event = gpio->irq_event;
-	gpio->irq_event = irq_event;
-    wmb();
-    chained_irq_enter(chip, desc);
-    irqidx = find_first_bit(&irq_event, BITS_PER_LONG);
-    while(irqidx < BITS_PER_LONG) {
+	unsigned long irq_event = readl(GPIO_B_INTERRUPT_EVENT);
+	writel(irq_event, GPIO_B_INTERRUPT_EVENT);
+	for(irqidx = 0; irqidx < 32; ++irqidx) {
 		if(irq_event & (1UL << irqidx)) {
 			generic_handle_irq(ox820_gpiob_irq_base + irqidx);
 		}
-        irqidx = find_next_bit(&irq_event, BITS_PER_LONG, irqidx + 1);
 	}
-    chained_irq_exit(chip, desc);
 	
 	return IRQ_HANDLED;
 }
@@ -166,13 +145,11 @@ static irqreturn_t ox820_gpiob_irq_handler(int irq, void* dev_id)
 static void ox820_gpiob_irq_mask(struct irq_data* d)
 {
 	unsigned long flags;
-    struct ox820_gpio_registers_t* gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
 	int irqno = d->irq - ox820_gpiob_irq_base;
 	spin_lock_irqsave(&oxnas_gpio_spinlock, flags);
 	
-    gpio->irq_enable_mask &= (~(1UL << irqno));
-    gpio->irq_event = 1UL << irqno;
-	wmb();
+	writel(readl(GPIO_B_INTERRUPT_ENABLE) & ~(1UL << (irqno)), GPIO_B_INTERRUPT_ENABLE);
+	writel(1UL << (irqno), GPIO_A_INTERRUPT_EVENT);
 	
 	spin_unlock_irqrestore(&oxnas_gpio_spinlock, flags);
 }
@@ -180,12 +157,10 @@ static void ox820_gpiob_irq_mask(struct irq_data* d)
 static void ox820_gpiob_irq_unmask(struct irq_data* d)
 {
 	unsigned long flags;
-    struct ox820_gpio_registers_t* gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
 	int irqno = d->irq - ox820_gpiob_irq_base;
 	spin_lock_irqsave(&oxnas_gpio_spinlock, flags);
 	
-    gpio->irq_enable_mask |= (1UL << irqno);
-    wmb();
+	writel(readl(GPIO_B_INTERRUPT_ENABLE) | (1UL << (irqno)), GPIO_B_INTERRUPT_ENABLE);
 	
 	spin_unlock_irqrestore(&oxnas_gpio_spinlock, flags);
 }
@@ -194,7 +169,6 @@ static int ox820_gpiob_irq_set_type(struct irq_data* d, unsigned int type)
 {
 	unsigned long flags;
 	int irqno = d->irq - ox820_gpiob_irq_base;
-    struct ox820_gpio_registers_t* gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
 	if((type & IRQ_TYPE_EDGE_BOTH) && (type & IRQ_TYPE_LEVEL_MASK)) {
 		printk("ox820_gpio: gpiob irq %d: unsupported type %d\n",
 				d->irq, type);
@@ -204,23 +178,22 @@ static int ox820_gpiob_irq_set_type(struct irq_data* d, unsigned int type)
 	spin_lock_irqsave(&oxnas_gpio_spinlock, flags);
 	
 	if((IRQ_TYPE_EDGE_RISING & type) || (IRQ_TYPE_LEVEL_HIGH & type)) {
-        gpio->rising_edge_act_high_irq_enable |= (1UL << irqno);
+		writel(readl(GPIO_B_RISING_EDGE_ACTIVE_HIGH_ENABLE) | (1 << (irqno)), GPIO_B_RISING_EDGE_ACTIVE_HIGH_ENABLE);
 	} else {
-        gpio->rising_edge_act_high_irq_enable &= (~(1UL << irqno));
+		writel(readl(GPIO_B_RISING_EDGE_ACTIVE_HIGH_ENABLE) & ~(1 << (irqno)), GPIO_B_RISING_EDGE_ACTIVE_HIGH_ENABLE);
 	}
 	
 	if((IRQ_TYPE_EDGE_FALLING & type) || (IRQ_TYPE_LEVEL_LOW & type)) {
-        gpio->falling_edge_act_low_irq_enable |= (1UL << irqno);
+		writel(readl(GPIO_B_FALLING_EDGE_ACTIVE_LOW_ENABLE) | (1 << (irqno)), GPIO_B_RISING_EDGE_ACTIVE_HIGH_ENABLE);
 	} else {
-        gpio->falling_edge_act_low_irq_enable &= (~(1UL << irqno));
+		writel(readl(GPIO_B_FALLING_EDGE_ACTIVE_LOW_ENABLE) & ~(1 << (irqno)), GPIO_B_RISING_EDGE_ACTIVE_HIGH_ENABLE);
 	}
 	
 	if(IRQ_TYPE_LEVEL_MASK & type) {
-        gpio->level_interrupt_enable |= (1UL << irqno);
+		writel(readl(GPIO_B_LEVEL_INTERRUPT_ENABLE) | (1 << (irqno)), GPIO_B_LEVEL_INTERRUPT_ENABLE);
 	} else {
-        gpio->level_interrupt_enable &= (~(1UL << irqno));
+		writel(readl(GPIO_B_LEVEL_INTERRUPT_ENABLE) & ~(1 << (irqno)), GPIO_B_LEVEL_INTERRUPT_ENABLE);
 	}
-    wmb();
 		
 	spin_unlock_irqrestore(&oxnas_gpio_spinlock, flags);
 	
@@ -235,44 +208,67 @@ static struct irq_chip gpio_b_irq_chip = {
 };
 #endif
 
-static int ox820_gpio_direction_input(struct gpio_chip* chip, unsigned nr)
+static inline void ox820_switch_to_gpio(unsigned nr)
 {
-    struct ox820_gpio_registers_t* gpio;
+	unsigned long flags;
+	unsigned long gpio_mask;
+
+	spin_lock_irqsave(&oxnas_gpio_spinlock, flags);
+	
+	if(nr < SYS_CTRL_NUM_PINS)
+	{
+		gpio_mask = 1 << nr;
+		writel(readl(SYS_CTRL_SECONDARY_SEL)   & ~(gpio_mask), SYS_CTRL_SECONDARY_SEL);
+		writel(readl(SYS_CTRL_TERTIARY_SEL)    & ~(gpio_mask), SYS_CTRL_TERTIARY_SEL);
+		writel(readl(SYS_CTRL_QUATERNARY_SEL)  & ~(gpio_mask), SYS_CTRL_QUATERNARY_SEL);
+		writel(readl(SYS_CTRL_DEBUG_SEL)       & ~(gpio_mask), SYS_CTRL_DEBUG_SEL);
+		writel(readl(SYS_CTRL_ALTERNATIVE_SEL) & ~(gpio_mask), SYS_CTRL_ALTERNATIVE_SEL);
+	} else {
+		gpio_mask = 1 << (nr - SYS_CTRL_NUM_PINS);
+		writel(readl(SEC_CTRL_SECONDARY_SEL)   & ~(gpio_mask), SEC_CTRL_SECONDARY_SEL);
+		writel(readl(SEC_CTRL_TERTIARY_SEL)    & ~(gpio_mask), SEC_CTRL_TERTIARY_SEL);
+		writel(readl(SEC_CTRL_QUATERNARY_SEL)  & ~(gpio_mask), SEC_CTRL_QUATERNARY_SEL);
+		writel(readl(SEC_CTRL_DEBUG_SEL)       & ~(gpio_mask), SEC_CTRL_DEBUG_SEL);
+		writel(readl(SEC_CTRL_ALTERNATIVE_SEL) & ~(gpio_mask), SEC_CTRL_ALTERNATIVE_SEL);
+	}
+	
+	spin_unlock_irqrestore(&oxnas_gpio_spinlock, flags);
+}
+
+static int ox820_gpio_direction_input(struct gpio_chip* gpio, unsigned nr)
+{
 	if(nr >= 50) {
 		return -EINVAL;
 	}
-    
-    if(nr >= 32) {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
-    } else {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-    }
 	
 	ox820_printk(KERN_INFO"ox820_gpio.c: switch to input %u\n", nr);
-	ox820_mf_select_gpio(nr);
+	ox820_switch_to_gpio(nr);
 
-    gpio->output_enable_clear = 1 << (nr & 31);
-    wmb();
+	if(nr < SYS_CTRL_NUM_PINS)
+	{
+		writel(1 << (nr & 31), GPIO_A_OUTPUT_ENABLE_CLEAR);
+	}
+	else
+	{
+		nr -= SYS_CTRL_NUM_PINS;
+		writel(1 << (nr & 31), GPIO_B_OUTPUT_ENABLE_CLEAR);
+	}
 	
 	return 0;
 }
 
-static int ox820_gpio_get(struct gpio_chip* chip, unsigned nr)
+static int ox820_gpio_get(struct gpio_chip* gpio, unsigned nr)
 {
-    struct ox820_gpio_registers_t* gpio;
 	if(nr >= 50) {
 		return 0;
 	}
 	
-    if(nr >= 32) {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
-    } else {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-    }
-	
 	ox820_printk(KERN_INFO"ox820_gpio.c: read input %u\n", nr);
-    
-    return !!(gpio->input & (1 << (nr & 31)));
+	if(nr < SYS_CTRL_NUM_PINS) {
+		return !!(readl(GPIO_A_DATA) & (1 << nr));
+	} else {
+		return !!(readl(GPIO_B_DATA) & (1 << (nr - SYS_CTRL_NUM_PINS)));
+	}
 }
 
 static int ox820_gpio_set_debounce(struct gpio_chip* chip,
@@ -280,82 +276,84 @@ static int ox820_gpio_set_debounce(struct gpio_chip* chip,
 					unsigned debounce)
 {
 	unsigned long flags;
-    struct ox820_gpio_registers_t* gpio;
 	if(nr >= 50) {
 		return -EINVAL;
 	}
-
-    if(nr >= 32) {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
-    } else {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-    }
 	
 	ox820_printk(KERN_INFO"ox820_gpio.c: set debounce mode for %u = %u\n", nr, debounce);
-	ox820_mf_select_gpio(nr);
+	ox820_switch_to_gpio(nr);
 	
 	spin_lock_irqsave(&oxnas_gpio_spinlock, flags);
-    if(debounce) {
-        gpio->debounce_enable |= (1 << (nr & 31));
-    } else {
-        gpio->debounce_enable &= (~(1 << (nr & 31)));
-    }
-    wmb();
+	if(nr < SYS_CTRL_NUM_PINS) {
+		writel(readl(GPIO_A_INPUT_DEBOUNCE_ENABLE) | (1 << (nr & 31)), GPIO_A_INPUT_DEBOUNCE_ENABLE);
+	} else {
+		nr -= SYS_CTRL_NUM_PINS;
+		writel(readl(GPIO_B_INPUT_DEBOUNCE_ENABLE) | (1 << (nr & 31)), GPIO_B_INPUT_DEBOUNCE_ENABLE);
+	}
 	spin_unlock_irqrestore(&oxnas_gpio_spinlock, flags);
 	
 	return 0;
 }
 
-static int ox820_gpio_direction_output(struct gpio_chip* chip,
+static int ox820_gpio_direction_output(struct gpio_chip* gpio,
 					unsigned nr,
 					int val)
 {
-    struct ox820_gpio_registers_t* gpio;
-
 	if(nr >= 50) {
 		return -EINVAL;
 	}
 	
 	ox820_printk(KERN_INFO"ox820_gpio.c: switch to output %u\n", nr);
-	ox820_mf_select_gpio(nr);
+	ox820_switch_to_gpio(nr);
 	
-    if(nr >= 32) {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
-    } else {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-    }
-    
-    gpio->output_enable_set = 1 << (nr & 31);
-	if(val) {
-        gpio->output_set = 1 << (nr & 31);
+	if(nr < SYS_CTRL_NUM_PINS) {
+		writel(1 << (nr & 31), GPIO_A_OUTPUT_ENABLE_SET);
 	} else {
-        gpio->output_clear = 1 << (nr & 31);
+		nr -= SYS_CTRL_NUM_PINS;
+		writel(1 << (nr & 31), GPIO_B_OUTPUT_ENABLE_SET);
 	}
-    wmb();
+	if(val) {
+		if(nr < SYS_CTRL_NUM_PINS) {
+			writel(1 << (nr & 31), GPIO_A_OUTPUT_SET);
+		} else {
+			nr -= SYS_CTRL_NUM_PINS;
+			writel(1 << (nr & 31), GPIO_B_OUTPUT_SET);
+		}
+	} else {
+		if(nr < SYS_CTRL_NUM_PINS) {
+			writel(1 << (nr & 31), GPIO_A_OUTPUT_CLEAR);
+		} else {
+			nr -= SYS_CTRL_NUM_PINS;
+			writel(1 << (nr & 31), GPIO_B_OUTPUT_CLEAR);
+		}
+	}
 	
 	return 0;
 }
 
-static void ox820_gpio_set(struct gpio_chip* chip,
+static void ox820_gpio_set(struct gpio_chip* gpio,
 				unsigned nr,
 				int val)
 {
-    struct ox820_gpio_registers_t* gpio;
 	if(nr >= 50) {
 		return;
 	}
 
-    if(nr >= 32) {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
-    } else {
-        gpio = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-    }
-    
 	ox820_printk(KERN_INFO"ox820_gpio.c: set output %u to %u\n", nr, val);
 	if(val) {
-        gpio->output_set = 1 << (nr & 31);
+		if(nr < SYS_CTRL_NUM_PINS) {
+			writel(1 << (nr & 31), GPIO_A_OUTPUT_SET);
+		} else {
+			nr -= SYS_CTRL_NUM_PINS;
+			writel(1 << (nr & 31), GPIO_B_OUTPUT_SET);
+		}
 	} else {
-        gpio->output_clear = 1 << (nr & 31);
+		if(nr < SYS_CTRL_NUM_PINS) {
+			writel(1 << (nr & 31), GPIO_A_OUTPUT_CLEAR);
+		} else {
+			nr -= SYS_CTRL_NUM_PINS;
+			writel(1 << (nr & 31), GPIO_B_OUTPUT_CLEAR);
+		}
 	}
 }
 
@@ -412,9 +410,6 @@ static struct platform_driver ox820_gpio_driver = {
 static int __init ox820_gpio_platform_init(void)
 {
 	int ret;
-    struct ox820_gpio_registers_t* gpioa = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-    struct ox820_gpio_registers_t* gpiob = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
-    
 #ifdef CONFIG_GPIO_OX820_USE_IRQ
 	int j;
 #endif
@@ -424,9 +419,8 @@ static int __init ox820_gpio_platform_init(void)
 		goto clean0;
 	}
 	/* disable interrupts for now */
-    gpioa->irq_enable_mask = 0;
-    gpiob->irq_enable_mask = 0;
-    wmb();
+	writel(0, GPIO_A_INTERRUPT_ENABLE);
+	writel(0, GPIO_B_INTERRUPT_ENABLE);
 	
 #ifdef CONFIG_GPIO_OX820_USE_IRQ
 	ret = request_irq(GPIOA_INTERRUPT, ox820_gpioa_irq_handler, IRQF_SHARED, "ox820-gpioa", &gpio_a_irq_chip);
@@ -476,13 +470,10 @@ static void __exit ox820_gpio_platform_exit(void)
 #ifdef CONFIG_GPIO_OX820_USE_IRQ
 	int j;
 #endif
-    struct ox820_gpio_registers_t* gpioa = (struct ox820_gpio_registers_t*) GPIO_A_BASE;
-    struct ox820_gpio_registers_t* gpiob = (struct ox820_gpio_registers_t*) GPIO_B_BASE;
 	
 	/* disable interrupts */
-    gpioa->irq_enable_mask = 0;
-    gpiob->irq_enable_mask = 0;
-    wmb();
+	writel(0, GPIO_A_INTERRUPT_ENABLE);
+	writel(0, GPIO_B_INTERRUPT_ENABLE);
 
 #ifdef CONFIG_GPIO_OX820_USE_IRQ
 	free_irq(GPIOB_INTERRUPT, &gpio_b_irq_chip);

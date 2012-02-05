@@ -13,8 +13,6 @@
 
 #include <mach/hardware.h>
 #include <linux/io.h>
-#include <mach/hw/sysctrl.h>
-#include <mach/hw/secctrl.h>
 
 static inline void arch_idle(void)
 {
@@ -27,79 +25,76 @@ static inline void arch_idle(void)
 
 static inline void arch_reset(char mode, const char* command)
 {
-    struct ox820_sysctrl_registers_t* sysctrl = (struct ox820_sysctrl_registers_t*) SYS_CONTROL_BASE;
-    struct ox820_secctrl_registers_t* secctrl = (struct ox820_secctrl_registers_t*) SEC_CONTROL_BASE;
-    
     // Assert reset to cores as per power on defaults
 	// Don't touch the DDR interface as things will come to an impromptu stop
 	// NB Possibly should be asserting reset for PLLB, but there are timing
 	//    concerns here according to the docs
-    sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_LEON |
-			MSK_OX820_SYSCTRL_RSTEN_USBMPH |
-			MSK_OX820_SYSCTRL_RSTEN_USBPHYA |
-			MSK_OX820_SYSCTRL_RSTEN_ETHA |
-			MSK_OX820_SYSCTRL_RSTEN_PCIEA |
-			MSK_OX820_SYSCTRL_RSTEN_DMA_SGDMA |
-			MSK_OX820_SYSCTRL_RSTEN_CIPHER |
-			MSK_OX820_SYSCTRL_RSTEN_SATA |
-			MSK_OX820_SYSCTRL_RSTEN_SATALINK |
-			MSK_OX820_SYSCTRL_RSTEN_SATAPHY |
-			MSK_OX820_SYSCTRL_RSTEN_PCIEPHY |
-			MSK_OX820_SYSCTRL_RSTEN_STATIC |
-			MSK_OX820_SYSCTRL_RSTEN_UARTA |
-			MSK_OX820_SYSCTRL_RSTEN_UARTB |
-			MSK_OX820_SYSCTRL_RSTEN_FAN_IRRX |
-			MSK_OX820_SYSCTRL_RSTEN_AUDIO |
-			MSK_OX820_SYSCTRL_RSTEN_SD |
-			MSK_OX820_SYSCTRL_RSTEN_ETHB |
-			MSK_OX820_SYSCTRL_RSTEN_PCIEB |
-			MSK_OX820_SYSCTRL_RSTEN_VIDEO |
-			MSK_OX820_SYSCTRL_RSTEN_USBPHYB |
-			MSK_OX820_SYSCTRL_RSTEN_USBDEV;
+    writel((1UL << SYS_CTRL_RSTEN_COPRO_BIT    )|
+           (1UL << SYS_CTRL_RSTEN_USBHS_BIT    )|
+           (1UL << SYS_CTRL_RSTEN_USBPHYA_BIT  )|
+           (1UL << SYS_CTRL_RSTEN_MAC_BIT      )|
+           (1UL << SYS_CTRL_RSTEN_PCIEA_BIT    )|
+           (1UL << SYS_CTRL_RSTEN_SGDMA_BIT    )|
+           (1UL << SYS_CTRL_RSTEN_CIPHER_BIT   )|
+           (1UL << SYS_CTRL_RSTEN_SATA_BIT     )|
+           (1UL << SYS_CTRL_RSTEN_SATA_LINK_BIT)|
+           (1UL << SYS_CTRL_RSTEN_SATA_PHY_BIT )|
+           (1UL << SYS_CTRL_RSTEN_PCIEPHY_BIT  )|
+           (1UL << SYS_CTRL_RSTEN_STATIC_BIT   )|
+           (1UL << SYS_CTRL_RSTEN_UART1_BIT    )|
+           (1UL << SYS_CTRL_RSTEN_UART2_BIT    )|
+           (1UL << SYS_CTRL_RSTEN_MISC_BIT     )|
+           (1UL << SYS_CTRL_RSTEN_I2S_BIT      )|
+           (1UL << SYS_CTRL_RSTEN_SD_BIT       )|
+           (1UL << SYS_CTRL_RSTEN_MAC_2_BIT    )|
+           (1UL << SYS_CTRL_RSTEN_PCIEB_BIT    )|
+           (1UL << SYS_CTRL_RSTEN_VIDEO_BIT    )|
+           (1UL << SYS_CTRL_RSTEN_USBPHYB_BIT  )|
+           (1UL << SYS_CTRL_RSTEN_USBDEV_BIT), SYS_CTRL_RSTEN_SET_CTRL);
 
     // Release reset to cores as per power on defaults
-    sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_GPIO;
+    writel((1UL << SYS_CTRL_RSTEN_GPIO_BIT), SYS_CTRL_RSTEN_CLR_CTRL);
 
     // Disable clocks to cores as per power-on defaults - must leave DDR
 	// related clocks enabled otherwise we'll stop rather abruptly.
-    sysctrl->cken_clr_ctrl = MSK_OX820_SYSCTRL_CKEN_LEON |
-			MSK_OX820_SYSCTRL_CKEN_DMA_SGDMA |
-			MSK_OX820_SYSCTRL_CKEN_CIPHER |
-			MSK_OX820_SYSCTRL_CKEN_SD |
-			MSK_OX820_SYSCTRL_CKEN_SATA |
-			MSK_OX820_SYSCTRL_CKEN_AUDIO |
-			MSK_OX820_SYSCTRL_CKEN_USBMPH |
-			MSK_OX820_SYSCTRL_CKEN_ETHA |
-			MSK_OX820_SYSCTRL_CKEN_PCIEA |
-			MSK_OX820_SYSCTRL_CKEN_STATIC |
-			MSK_OX820_SYSCTRL_CKEN_ETHB |
-			MSK_OX820_SYSCTRL_CKEN_PCIEB |
-			MSK_OX820_SYSCTRL_CKEN_REF600 |
-			MSK_OX820_SYSCTRL_CKEN_USBDEV;
+    writel((1UL << SYS_CTRL_CKEN_COPRO_BIT  )|
+           (1UL << SYS_CTRL_CKEN_DMA_BIT    )|
+           (1UL << SYS_CTRL_CKEN_CIPHER_BIT )|
+           (1UL << SYS_CTRL_CKEN_SD_BIT     )|
+           (1UL << SYS_CTRL_CKEN_SATA_BIT   )|
+           (1UL << SYS_CTRL_CKEN_I2S_BIT    )|
+           (1UL << SYS_CTRL_CKEN_USBHS_BIT  )|
+           (1UL << SYS_CTRL_CKEN_MAC_BIT    )|
+           (1UL << SYS_CTRL_CKEN_PCIEA_BIT  )|
+           (1UL << SYS_CTRL_CKEN_STATIC_BIT )|
+           (1UL << SYS_CTRL_CKEN_MAC_2_BIT  )|
+           (1UL << SYS_CTRL_CKEN_PCIEB_BIT  )|
+           (1UL << SYS_CTRL_CKEN_REF600_BIT )|
+           (1UL << SYS_CTRL_CKEN_USBDEV_BIT), SYS_CTRL_CKEN_CLR_CTRL);
 
     // Enable clocks to cores as per power-on defaults
 
     // Set sys-control pin mux'ing as per power-on defaults
-    sysctrl->mfa_secsel_ctrl = 0;
-    sysctrl->mfa_tersel_ctrl = 0;
-    sysctrl->mfa_quatsel_ctrl = 0;
-    sysctrl->mfa_debugsel_ctrl = 0;
-    sysctrl->mfa_altsel_ctrl = 0;
-    sysctrl->mfa_pullup_ctrl = 0;
+    writel(0UL, SYS_CTRL_SECONDARY_SEL);
+    writel(0UL, SYS_CTRL_TERTIARY_SEL);
+    writel(0UL, SYS_CTRL_QUATERNARY_SEL);
+    writel(0UL, SYS_CTRL_DEBUG_SEL);
+    writel(0UL, SYS_CTRL_ALTERNATIVE_SEL);
+    writel(0UL, SYS_CTRL_PULLUP_SEL);
 
-    secctrl->mfb_secsel_ctrl = 0;
-    secctrl->mfb_tersel_ctrl = 0;
-    secctrl->mfb_quatsel_ctrl = 0;
-    secctrl->mfb_debugsel_ctrl = 0;
-    secctrl->mfb_altsel_ctrl = 0;
-    secctrl->mfb_pullup_ctrl = 0;
+    writel(0UL, SEC_CTRL_SECONDARY_SEL);
+    writel(0UL, SEC_CTRL_TERTIARY_SEL);
+    writel(0UL, SEC_CTRL_QUATERNARY_SEL);
+    writel(0UL, SEC_CTRL_DEBUG_SEL);
+    writel(0UL, SEC_CTRL_ALTERNATIVE_SEL);
+    writel(0UL, SEC_CTRL_PULLUP_SEL);
 
     // No need to save any state, as the ROM loader can determine whether reset
     // is due to power cycling or programatic action, just hit the (self-
     // clearing) CPU reset bit of the block reset register
-    sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_ARM_SCU |
-			MSK_OX820_SYSCTRL_RSTEN_ARM_CPU0 |
-			MSK_OX820_SYSCTRL_RSTEN_ARM_CPU1;
+    writel((1UL << SYS_CTRL_RSTEN_SCU_BIT)  |
+		   (1UL << SYS_CTRL_RSTEN_ARM0_BIT) |
+		   (1UL << SYS_CTRL_RSTEN_ARM1_BIT), SYS_CTRL_RSTEN_SET_CTRL);
 }
 
 #endif // __ASM_ARCH_SYSTEM_H
