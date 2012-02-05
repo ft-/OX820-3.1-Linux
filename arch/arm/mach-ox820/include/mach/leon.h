@@ -23,12 +23,13 @@ enum ox820_leon_clockmode_t
 	OX820_LEON_CLOCKMODE_DIV_4,
 	OX820_LEON_CLOCKMODE_DIV_2
 };
-int ox820_leon_set_clock(enum ox820_leon_clockmode_t);
+int ox820_set_clock(enum ox820_leon_clockmode_t);
 
 int ox820_is_leon_running(void);
 
-int ox820_leon_set_irq2(int active);
+int ox820_leon_trigger_irq2(void);
 
+/* only one of the two can be used */
 int ox820_leon_trigger_rps_softirq(void);
 
 #endif
