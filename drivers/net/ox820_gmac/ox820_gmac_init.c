@@ -167,7 +167,7 @@ void ox820_gmac_initialize_regs(struct ox820_gmac_t* gmac)
     	// GMAC requires store&forward in order to compute Tx checksums
     	gmac->gmac_regs->dma_opmode |= MSK_OX820_GMAC_DMA_OPMODE_TSF;
 
-	gmac->gmac_regs->dma_intenable = MSK_OX820_GMAC_DMA_INTENABLE_RIE | MSK_OX820_GMAC_DMA_INTENABLE_TIE;
+	gmac->gmac_regs->dma_intenable = 0;
 	gmac->gmac_regs->mmc_rx_mask = ~0;
 	gmac->gmac_regs->mmc_tx_mask = ~0;
 	wmb();

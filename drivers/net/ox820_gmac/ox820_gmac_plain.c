@@ -468,7 +468,7 @@ const struct net_device_ops ox820_gmac_plain_netdev_ops = {
 	.ndo_set_multicast_list		= ox820_gmac_set_multicast_list,
 	.ndo_set_mac_address		= ox820_gmac_set_mac_address,
 	.ndo_change_mtu			= ox820_gmac_plain_change_mtu,
-#ifdef CONFIG_NET_POLL_CONTROLLER
+#if 0 && defined(CONFIG_NET_POLL_CONTROLLER)
 	.ndo_poll_controller		= ox820_gmac_netpoll,
 #endif
 };
@@ -492,5 +492,16 @@ int ox820_gmac_plain_init(struct net_device* netdev, struct ox820_gmac_t* gmac)
 
 	ox820_gmac_dma_schedule_rx(gmac);
 
+	gmac->gmac_regs->dma_intenable |= MSK_OX820_GMAC_DMA_INTENABLE_TIE |
+					MSK_OX820_GMAC_DMA_INTENABLE_TSE |
+					MSK_OX820_GMAC_DMA_INTENABLE_TUE |
+					MSK_OX820_GMAC_DMA_INTENABLE_TUJ |
+					MSK_OX820_GMAC_DMA_INTENABLE_OVE |
+					MSK_OX820_GMAC_DMA_INTENABLE_UNE |
+					MSK_OX820_GMAC_DMA_INTENABLE_RIE |
+					MSK_OX820_GMAC_DMA_INTENABLE_RUE |
+					MSK_OX820_GMAC_DMA_INTENABLE_RSE |
+					MSK_OX820_GMAC_DMA_STATUS_GLI;
+	wmb();
 	return 0;
 }

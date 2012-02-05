@@ -18,7 +18,7 @@
 #include "ox820_gmac.h"
 
 /*=============================================================================*/
-irqreturn_t ox820_gmac_irq_handler(int irq, struct irq_desc* irqdesc)
+irqreturn_t ox820_gmac_irq_handler(int irq,void* irqdesc)
 {
 	struct ox820_gmac_t* gmac = irq_get_handler_data(irq);
 	u32 dma_status = gmac->gmac_regs->dma_status;

@@ -27,6 +27,7 @@
 #include <mach/hardware.h>
 #include <mach/irqs.h>
 #include <mach/hw/rpsa.h>
+#include <mach/gmac.h>
 
 /**************************************
  * SATA
@@ -116,6 +117,11 @@ static struct platform_device usb_host = {
 /**************************************
  * GMAC-A
  */
+static struct ox820_gmac_platform_data_t gmaca_platform_data = {
+ 	 .enable_leon = 0,
+ 	 .enable_netoe = 0
+};
+
 static struct resource gmaca_resources[] = {
     [0] = {
            .name       	= "gmaca-registers",
@@ -124,7 +130,7 @@ static struct resource gmaca_resources[] = {
            .flags      	= IORESOURCE_MEM
     },
     [1] = {
-        .name       = "sata_irq",
+        .name       = "gmaca_irq",
         .start      = OX820_ARM_GIC_IRQ_GMAC_A,
         .end        = OX820_ARM_GIC_IRQ_GMAC_A,
         .flags      = IORESOURCE_IRQ
@@ -137,11 +143,17 @@ static struct platform_device gmaca_device = {
     .num_resources = ARRAY_SIZE(gmaca_resources),
     .resource = gmaca_resources,
     .dev.coherent_dma_mask = 0xFFFFFFFF,
+    .dev.platform_data = &gmaca_platform_data
 };
 
 /**************************************
  * GMAC-B
  */
+static struct ox820_gmac_platform_data_t gmacb_platform_data = {
+ 	 .enable_leon = 0,
+ 	 .enable_netoe = 0
+};
+
 static struct resource gmacb_resources[] = {
     [0] = {
            .name       	= "gmacb-registers",
@@ -150,7 +162,7 @@ static struct resource gmacb_resources[] = {
            .flags      	= IORESOURCE_MEM
     },
     [1] = {
-        .name       = "sata_irq",
+        .name       = "gmacb_irq",
         .start      = OX820_ARM_GIC_IRQ_GMAC_B,
         .end        = OX820_ARM_GIC_IRQ_GMAC_B,
         .flags      = IORESOURCE_IRQ
@@ -163,6 +175,7 @@ static struct platform_device gmacb_device = {
     .num_resources = ARRAY_SIZE(gmacb_resources),
     .resource = gmacb_resources,
     .dev.coherent_dma_mask = 0xFFFFFFFF,
+    .dev.platform_data = &gmacb_platform_data
 };
 
 /**************************************

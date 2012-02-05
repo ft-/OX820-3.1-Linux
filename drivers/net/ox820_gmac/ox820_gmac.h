@@ -22,6 +22,7 @@
 #include <mach/hw/sysctrl.h>
 #include <mach/hardware.h>
 #include <mach/leon.h>
+#include <mach/gmac.h>
 #include <linux/irq.h>
 #include <linux/in.h>
 #include <net/ip.h>
@@ -67,10 +68,11 @@ struct ox820_gmac_dma_request_ctrlblock_t
 struct ox820_gmac_t
 {
 	u32				gmac_unit;
-	struct ox820_gmac_registers_t*	gmac_regs;
-	struct ox820_netoe_registers_t*	netoe_regs;
+	struct ox820_gmac_registers_t __iomem	*gmac_regs;
+	struct ox820_netoe_registers_t __iomem	*netoe_regs;
 	enum ox820_gmac_linkspeed_t	last_configured_linkspeed;
 	int				last_configured_fullduplex;
+	int				phy_adr;
 
 	struct net_device*		netdev;
 	struct device* 			dev;
@@ -129,6 +131,10 @@ struct ox820_gmac_t
 void ox820_gmac_initialize_regs(struct ox820_gmac_t* gmac);
 
 /*=============================================================================*/
+/* ox820_gmac_interrupt.c */
+irqreturn_t ox820_gmac_irq_handler(int irq, void* irqdesc);
+
+/*=============================================================================*/
 /* ox820_gmac_config.c */
 void ox820_gmac_config_link_speed(struct ox820_gmac_t* gmac, enum ox820_gmac_linkspeed_t linkspeed, int fdx);
 
@@ -154,6 +160,8 @@ void ox820_gmac_netpoll(struct net_device *netdev);
 
 /*=============================================================================*/
 /* ox820_gmac_plain.c */
+int ox820_gmac_plain_init(struct net_device* netdev, struct ox820_gmac_t* gmac);
+
 int ox820_gmac_plain_open(struct net_device* netdev);
 
 int ox820_gmac_plain_stop(struct net_device* netdev);

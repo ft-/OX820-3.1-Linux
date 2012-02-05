@@ -87,15 +87,19 @@ int ox820_gmac_dma_init(struct ox820_gmac_t* gmac,
 /*=============================================================================*/
 int ox820_gmac_dma_cleanup(struct ox820_gmac_t* gmac)
 {
-	dma_free_coherent(gmac->dev,
-	                  sizeof(struct ox820_gmac_dma_request_ctrlblock_t) * gmac->dma.allocated_tx_descriptors,
-	                  gmac->dma.tx_descriptors_va,
-	                  gmac->dma.tx_descriptors_pa);
+	if(NULL != gmac->dma.tx_descriptors_va) {
+		dma_free_coherent(gmac->dev,
+				  sizeof(struct ox820_gmac_dma_request_ctrlblock_t) * gmac->dma.allocated_tx_descriptors,
+				  gmac->dma.tx_descriptors_va,
+				  gmac->dma.tx_descriptors_pa);
+	}
 
-	dma_free_coherent(gmac->dev,
-	                  sizeof(struct ox820_gmac_dma_request_ctrlblock_t) * gmac->dma.allocated_rx_descriptors,
-	                  gmac->dma.rx_descriptors_va,
-	                  gmac->dma.rx_descriptors_pa);
+	if(NULL != gmac->dma.rx_descriptors_va) {
+		dma_free_coherent(gmac->dev,
+				  sizeof(struct ox820_gmac_dma_request_ctrlblock_t) * gmac->dma.allocated_rx_descriptors,
+				  gmac->dma.rx_descriptors_va,
+				  gmac->dma.rx_descriptors_pa);
+	}
 
 	return 0;
 }
