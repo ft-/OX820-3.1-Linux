@@ -32,8 +32,6 @@ static inline unsigned int ox820_rps_irq_to_bitno(struct irq_data *d) {
 
 static void ox820_rps_ack_irq(struct irq_data *d)
 {
-    struct ox820_rpsa_registers_t* const rpsa = (struct ox820_rpsa_registers_t*) RPSA_BASE;
-    rpsa->irq_disable_control = (1UL << ox820_rps_irq_to_bitno(d));
 }
 
 static void ox820_rps_mask_irq(struct irq_data *d)
