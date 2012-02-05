@@ -70,7 +70,6 @@ int ox820_leon_set_clock(enum ox820_leon_clockmode_t clkmode)
 				regs_secctrl->leon_ctrl |= MSK_OX820_SECCTRL_LEON_CTRL_DOUBLE_CLK;
 				break;
 		}
-		wmb();
 		/* Leon clock is now configured */
 	}
 	spin_unlock_irqrestore(&ox820_leon_lock, flags);
@@ -156,7 +155,6 @@ int ox820_leon_trigger_irq2(int active)
 		} else {
 			regs_secctrl->leon_ctrl &= (~MSK_OX820_SECCTRL_LEON_CTRL_PROMOTE_IRQ);
 		}
-		wmb();
 	}
 	spin_unlock_irqrestore(&ox820_leon_lock, flags);
 
@@ -176,7 +174,6 @@ int ox820_leon_trigger_rps_softirq(void)
 	if(regs_sysctrl->cken_stat & MSK_OX820_SYSCTRL_CKEN_LEON) {
 		ret = 0;
 		rpsc->software_irq = 1;
-		wmb();
 	}
 	spin_unlock_irqrestore(&ox820_leon_lock, flags);
 
