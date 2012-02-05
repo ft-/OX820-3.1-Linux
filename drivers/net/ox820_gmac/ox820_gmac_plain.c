@@ -26,9 +26,7 @@ static void ox820_gmac_plain_receive_int(struct ox820_gmac_t* gmac)
 	int ip_summed;
 	int is_ip;
 	int vlan_offset;
-	int valid;
 	unsigned short eth_protocol;
-	unsigned int packet_len;
 
 	while(NULL != gmac->dma.active_rx_ctrlblocks) {
 		desc_status = gmac->dma.active_rx_ctrlblocks->hw.status;
@@ -40,105 +38,100 @@ static void ox820_gmac_plain_receive_int(struct ox820_gmac_t* gmac)
 		prev = gmac->dma.active_rx_ctrlblocks;
 		gmac->dma.active_rx_ctrlblocks = prev->next;
 
-		skb = prev->skb;
+		if(likely(0 == (desc_status & (MSK_OX820_GMAC_DMA_RX_STATUS_ES | MSK_OX820_GMAC_DMA_RX_STATUS_IPC))) {
+			skb = prev->skb;
 
-		if(likely(0 == (desc_status & (MSK_OX820_GMAC_DMA_RX_STATUS_ES | MSK_OX820_GMAC_DMA_RX_STATUS_IPC)))) {
-
-			valid = 1;
+			/* unhook skb */
+			dma_unmap_single(0, prev->hw.buffer1, prev->hw.frag_length, DMA_FROM_DEVICE);
 
 			// Get the packet data length
-			packet_len = ((desc_status & MSK_OX820_GMAC_DMA_RX_STATUS_FL) >> BIT_OX820_GMAC_DMA_RX_STATUS_FL);
-			if(packet_len < 4) {
-				packet_len -= 4;
-			}
-			if (packet_len > gmac->netdev->mtu + 18) {
-				printk(KERN_INFO "Received length %d greater than Rx buffer size %d\n", packet_len, gmac->netdev->mtu + 18);
+			packet_len = get_desc_len(desc_status, last);
+			if (packet_len > priv->rx_buffer_size_) {
+				DBG(20, KERN_INFO "Received length %d greater than Rx buffer size %d\n", packet_len, priv->rx_buffer_size_);
 
 				// Force a length error into the descriptor status
-				valid = 0;
-			} else {
+				desc_status = force_rx_length_error(desc_status);
+				goto not_valid_skb;
+			}
 
-				ip_summed = CHECKSUM_NONE;
+			ip_summed = CHECKSUM_NONE;
 
-				// Determine whether Ethernet frame contains an IP packet -
-				// only bother with Ethernet II frames, but do cope with
-				// 802.1Q VLAN tag presence
-				vlan_offset = 0;
-				eth_protocol = ntohs(((struct ethhdr*)skb->data)->h_proto);
-				is_ip = is_ip_packet(eth_protocol);
+			// Determine whether Ethernet frame contains an IP packet -
+			// only bother with Ethernet II frames, but do cope with
+			// 802.1Q VLAN tag presence
+			vlan_offset = 0;
+			eth_protocol = ntohs(((struct ethhdr*)skb->data)->h_proto);
+			is_ip = is_ip_packet(eth_protocol);
 
-				if (!is_ip) {
-					// Check for VLAN tag
-					if (eth_protocol == ETH_P_8021Q) {
-						// Extract the contained protocol type from after
-						// the VLAN tag
-						eth_protocol = ntohs(*(unsigned short*)(skb->data + ETH_HLEN));
-						is_ip = is_ip_packet(eth_protocol);
+			if (!is_ip) {
+				// Check for VLAN tag
+				if (eth_protocol == ETH_P_8021Q) {
+					// Extract the contained protocol type from after
+					// the VLAN tag
+					eth_protocol = ntohs(*(unsigned short*)(skb->data + ETH_HLEN));
+					is_ip = is_ip_packet(eth_protocol);
 
-						// Adjustment required to skip the VLAN stuff and
-						// get to the IP header
-						vlan_offset = 4;
-					}
+					// Adjustment required to skip the VLAN stuff and
+					// get to the IP header
+					vlan_offset = 4;
 				}
+			}
 
-				// Only offload checksum calculation for IP packets
-				if (is_ip) {
-					struct iphdr* ipv4_header = 0;
+			// Only offload checksum calculation for IP packets
+			if (is_ip) {
+				struct iphdr* ipv4_header = 0;
 
-					if (unlikely(desc_status & MSK_OX820_GMAC_DMA_RX_STATUS_PCE)) {
-						valid = 0;
-					} else if (is_ipv4_packet(eth_protocol)) {
-						ipv4_header = (struct iphdr*)(skb->data + ETH_HLEN + vlan_offset);
+				if (unlikely(desc_status & MSK_OX820_GMAC_DMA_RX_STATUS_PCE) {
+					valid = 0;
+				} else if (is_ipv4_packet(eth_protocol)) {
+					ipv4_header = (struct iphdr*)(skb->data + ETH_HLEN + vlan_offset);
 
-						// H/W can only checksum non-fragmented IP packets
-						if (!(ipv4_header->frag_off & htons(IP_MF | IP_OFFSET))) {
-							if (is_hw_checksummable(ipv4_header->protocol)) {
-								ip_summed = CHECKSUM_UNNECESSARY;
-							}
-						}
-					}
-#ifdef CONFIG_OX820_GMAC_IPV6_OFFLOAD
-					else if (is_ipv6_packet(eth_protocol)) {
-						struct ipv6hdr* ipv6_header = (struct ipv6hdr*)(skb->data + ETH_HLEN + vlan_offset);
-
-						if (is_hw_checksummable(ipv6_header->nexthdr)) {
+					// H/W can only checksum non-fragmented IP packets
+					if (!(ipv4_header->frag_off & htons(IP_MF | IP_OFFSET))) {
+						if (is_hw_checksummable(ipv4_header->protocol)) {
 							ip_summed = CHECKSUM_UNNECESSARY;
 						}
 					}
-#endif // CONFIG_OX820_GMAC_IPV6_OFFLOAD
 				}
+#ifdef CONFIG_OXNAS_IPV6_OFFLOAD
+				else if (is_ipv6_packet(eth_protocol)) {
+					struct ipv6hdr* ipv6_header = (struct ipv6hdr*)(skb->data + ETH_HLEN + vlan_offset);
+
+					if (is_hw_checksummable(ipv6_header->nexthdr)) {
+						ip_summed = CHECKSUM_UNNECESSARY;
+					}
+				}
+#endif // CONFIG_OXNAS_IPV6_OFFLOAD
 			}
 
-			if (likely(valid)) {
-				/* unhook skb */
-				dma_unmap_single(0, prev->hw.buffer1, prev->frag_length, DMA_FROM_DEVICE);
-
-				// Increase the skb's data pointer to account for the RX packet that has
-				// been DMAed into it
-				skb_put(skb, packet_len);
-
-				// Set the device for the skb
-				skb->dev = gmac->netdev;
-
-				// Set packet protocol
-				skb->protocol = eth_type_trans(skb, gmac->netdev);
-
-				// Record whether h/w checksumed the packet
-				skb->ip_summed = ip_summed;
-
-				// Send the packet up the network stack
-				netif_receive_skb(skb);
-
-				// Update receive statistics
-				gmac->netdev->last_rx = jiffies;
-				++gmac->stats.rx_packets;
-				gmac->stats.rx_bytes += packet_len;
-
-
-				/* put a new skb to it */
-				skb = ox820_gmac_dma_rx_desc_attach_skb(gmac, prev);
+			if (unlikely(!valid)) {
+				goto not_valid_skb;
 			}
 
+			// Increase the skb's data pointer to account for the RX packet that has
+			// been DMAed into it
+			skb_put(skb, packet_len);
+
+			// Set the device for the skb
+			skb->dev = priv->netdev;
+
+			// Set packet protocol
+			skb->protocol = eth_type_trans(skb, priv->netdev);
+
+			// Record whether h/w checksumed the packet
+			skb->ip_summed = ip_summed;
+
+			// Send the packet up the network stack
+			netif_receive_skb(skb);
+
+			// Update receive statistics
+			priv->netdev->last_rx = jiffies;
+			++priv->stats.rx_packets;
+			priv->stats.rx_bytes += packet_len;
+
+
+			/* put a new skb to it */
+			skb = ox820_gmac_dma_rx_desc_attach_skb(gmac, prev);
 		}
 
 		if (unlikely(!skb)) {
