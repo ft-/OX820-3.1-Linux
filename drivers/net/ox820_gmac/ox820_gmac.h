@@ -223,9 +223,6 @@ typedef struct tx_frag_info {
     u16         length;
 } tx_frag_info_t;
 
-void
-ox820_gmac_dma_schedule_rx(struct ox820_gmac_t* gmac);
-
 /*=============================================================================*/
 
 #define OX820_MS_TO_JIFFIES(x) (((x) < (1000/(HZ))) ? 1 : (x) * (HZ) / 1000)

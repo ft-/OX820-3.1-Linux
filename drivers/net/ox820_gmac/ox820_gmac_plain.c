@@ -476,21 +476,10 @@ const struct net_device_ops ox820_gmac_plain_netdev_ops = {
 /*=============================================================================*/
 int ox820_gmac_plain_init(struct net_device* netdev, struct ox820_gmac_t* gmac)
 {
-	int ret;
-
 	gmac->gmac_tx_int = ox820_gmac_dma_deschedule_tx_descriptors;
 	gmac->gmac_rx_int = ox820_gmac_plain_receive_int;
 
 	netdev->netdev_ops = &ox820_gmac_plain_netdev_ops;
-
-	ret = ox820_gmac_dma_init(gmac,
-	                          128,
-	                          128);
-	if(0 != ret) {
-		return ret;
-	}
-
-	ox820_gmac_dma_schedule_rx(gmac);
 
 	return 0;
 }
