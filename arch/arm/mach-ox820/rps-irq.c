@@ -83,6 +83,7 @@ void __init ox820_rps_init_irq() {
 	printk("ox820_rps_init_irq: interrupts %d to %d\n",OX820_RPSA_IRQ_START,OX820_RPSA_IRQ_START+31);
 	/* Disable all IRQs */
 	rpsa->irq_disable_control = ~0;
+	rpsa->fiq_select = 0;
 	wmb();
     
 	/* Initialise IRQ tracking structures */
