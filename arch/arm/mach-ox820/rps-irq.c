@@ -63,7 +63,6 @@ static void ox820_rps_irq(unsigned int irq, struct irq_desc *desc) {
 
 	/* read the IRQ number from the RPS core */
 	status = rpsa->irq_mask_status;
-	rpsa->irq_disable_control = status;	/* disable irq */
 
 	/* convert the RPS interrupt number into a system interrupt number */
 	rps_irq = find_first_bit(&status, BITS_PER_LONG);
@@ -71,7 +70,6 @@ static void ox820_rps_irq(unsigned int irq, struct irq_desc *desc) {
 		generic_handle_irq(OX820_RPSA_IRQ_START + rps_irq);
 		rps_irq = find_next_bit(&status, BITS_PER_LONG, rps_irq + 1);
 	}
-	rpsa->irq_enable_control = status;	/* re-enable irq */
 
 	chained_irq_exit(chip, desc);
 }
