@@ -9,8 +9,8 @@
 
 struct ox820_rpsc_registers_t
 {
-	volatile u32 irq_mask_source;            /* +0x0000 */
-	volatile u32 irq_raw_source;             /* +0x0004 */
+	volatile u32 irq_mask_status;           /* +0x0000 */
+	volatile u32 irq_raw_status;            /* +0x0004 */
 	u32 irq_enable_control;         	/* +0x0008 */
 	u32 irq_disable_control;        	/* +0x000C */
 	u32 software_irq;               	/* +0x0010 */
