@@ -19,8 +19,8 @@ struct ox820_rpsa_registers_t
 	u32 fiq_raw_source;			/* +0x0104 */
 	u32 fiq_enable_control;			/* +0x0108 */
 	u32 fiq_disable_control;		/* +0x010C */
-	u32 fiq_select;				/* +0x0110 */
-	u32 reserved_1[59];			/* +0x0114 */
+	u32 reserved_1[59];			/* +0x0110 */
+	u32 fiq_select;				/* +0x01FC */
 	u32 timer1_load;			/* +0x0200 */
 	volatile u32 timer1_current_count;	/* +0x0204 changes with every read so it is volatile */
 	u32 timer1_control;			/* +0x0208 */
