@@ -7,7 +7,7 @@
 #ifndef _ox820_hw_irrx_h
 #define _ox820_hw_irrx_h
 
-#include <linux/types.h<
+#include <linux/types.h>
 
 struct ox820_irrx_registers_t
 {

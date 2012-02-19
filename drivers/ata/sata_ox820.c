@@ -46,21 +46,22 @@
 
 
 #include <mach/hardware.h>
-#include <mach/desc_alloc.h>
 #include <mach/memory.h>
 #include <mach/ox820sata.h>
 #include <mach/hw/rpsa.h>
+#include <mach/hw/sysctrl.h>
 
 #include <linux/libata.h>
 #include "libata.h"
 
+struct ox820_sysctrl_registers_t* const regs_sysctrl = (struct ox820_sysctrl_registers_t*) SYS_CONTROL_BASE;
 
 /***************************************************************************
 * CONSTANTS
 ***************************************************************************/
 
 #define DRIVER_AUTHOR   "Oxford Semiconductor Ltd."
-#define DRIVER_DESC     "934 SATA core controler"
+#define DRIVER_DESC     "934 SATA core controller"
 #define DRIVER_NAME     "ox820-sata"
 /**************************************************************************/
 MODULE_LICENSE("GPL");
@@ -518,21 +519,18 @@ static inline void ox820sata_clear_reg_access_error(u32* base)
 static void ox820sata_reset_core(void) 
 {
 	/* Enable the clock to the SATA block */
-	writel(1UL << SYS_CTRL_CKEN_SATA_BIT, SYS_CTRL_CKEN_SET_CTRL);
+	regs_sysctrl->cken_set_ctrl = MSK_OX820_SYSCTRL_CKEN_SATA;
 	wmb();
 
 	/* reset Controller, Link and PHY */
-	writel( (1UL << SYS_CTRL_RSTEN_SATA_BIT)      |
-			(1UL << SYS_CTRL_RSTEN_SATA_LINK_BIT) |
-			(1UL << SYS_CTRL_RSTEN_SATA_PHY_BIT), SYS_CTRL_RSTEN_SET_CTRL);
+	regs_sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_SATA | MSK_OX820_SYSCTRL_RSTEN_SATALINK | MSK_OX820_SYSCTRL_RSTEN_SATAPHY;
 	wmb();
 	udelay(50);
 	
 	/* un-reset the PHY, then Link and Controller */
-	writel(1UL << SYS_CTRL_RSTEN_SATA_PHY_BIT, SYS_CTRL_RSTEN_CLR_CTRL);
+	regs_sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_SATAPHY;
 	udelay(50);
-	writel( (1UL << SYS_CTRL_RSTEN_SATA_LINK_BIT) |
-			(1UL << SYS_CTRL_RSTEN_SATA_BIT), SYS_CTRL_RSTEN_CLR_CTRL);
+	regs_sysctrl->rsten_clr_ctrl = MSK_OX820_SYSCTRL_RSTEN_SATA | MSK_OX820_SYSCTRL_RSTEN_SATALINK;
 	udelay(50);
 
 	workaround5458();
@@ -968,12 +966,10 @@ static int ox820sata_driver_remove(struct platform_device* pdev)
 	}
 
 	// reset Controller, Link and PHY
-	writel( (1UL << SYS_CTRL_RSTEN_SATA_BIT)      |
-			(1UL << SYS_CTRL_RSTEN_SATA_LINK_BIT) |
-			(1UL << SYS_CTRL_RSTEN_SATA_PHY_BIT), SYS_CTRL_RSTEN_SET_CTRL);
+	regs_sysctrl->rsten_set_ctrl = MSK_OX820_SYSCTRL_RSTEN_SATA | MSK_OX820_SYSCTRL_RSTEN_SATALINK | MSK_OX820_SYSCTRL_RSTEN_SATAPHY;
 	
 	// Disable the clock to the SATA block
-	writel(1UL << SYS_CTRL_CKEN_SATA_BIT, SYS_CTRL_CKEN_CLR_CTRL);
+	regs_sysctrl->cken_clr_ctrl = MSK_OX820_SYSCTRL_CKEN_SATA;
 	
 	return 0;
 }
@@ -1004,34 +1000,6 @@ static int __init ox820sata_init_driver( void )
 	/* check ports parameter */
 	if(ports < 1 || ports > 2) {
 		return -EINVAL;
-	}
-	
-	/* check there is enough space for PRD entries in SRAM */
-	if (ATA_PRD_TBL_SZ > OX820SATA_PRD_SIZE) {
-		printk(KERN_ERR"PRD table size is bigger than the space allocated for it in hardware.h");
-		return -EINVAL;
-	}
-
-	/* check this matches the space reserved in hardware.h */
-	if (sizeof(sgdma_request_t) > OX820SATA_SGDMA_SIZE) {
-		printk(KERN_ERR"sgdma_request_t has grown beyond the space allocated for it in hardware.h");
-		return -EINVAL;
-	}
-
-	if(ports > 1)
-	{
-
-		/* check there is enough space for PRD entries in SRAM */
-		if ((2 * ATA_PRD_TBL_SZ) > OX820SATA_PRD_SIZE) {
-			printk(KERN_ERR"PRD table size is bigger than the space allocated for it in hardware.h");
-			return -EINVAL;
-		}
-
-		/* check this matches the space reserved in hardware.h */
-		if ((2 * sizeof(sgdma_request_t)) > OX820SATA_SGDMA_SIZE) {
-			printk(KERN_ERR"sgdma_request_t has grown beyond the space allocated for it in hardware.h");
-			return -EINVAL;
-		}
 	}
 	
 	ret = ox820_disklight_led_register();
@@ -1841,16 +1809,41 @@ static int ox820sata_port_start(struct ata_port *ap)
 		(u32* )(SATASGDMA_REGS_BASE + (dma_channel * OX820SATA_SGDMA_CORESIZE));  
 
 	/* set-up the sgdma controller addresses */
+	pd->sgdma_request_va = dma_alloc_coherent(NULL, sizeof(sgdma_request_t), &pd->sgdma_request_pa, GFP_DMA);
+	if(NULL == pd->sgdma_request_va)
+	{
+		kfree(pd);
+		ap->private_data = NULL;
+		return -ENOMEM;
+	}
+#if 0
 	pd->sgdma_request_va = (sgdma_request_t* )(OX820SATA_SGDMA_REQ + 
 		(dma_channel * sizeof(sgdma_request_t)));
 	pd->sgdma_request_pa = (dma_addr_t)(OX820SATA_SGDMA_REQ_PA + 
 		(dma_channel * sizeof(sgdma_request_t)));
-		
-	/* set the PRD table pointers to the space for the PRD tables in SRAM */    
+#endif
+
+	ap->bmdma_prd = dma_alloc_coherent(NULL,
+	                                   ATA_PRD_TBL_SZ * sizeof(struct ata_bmdma_prd),
+	                                   &ap->bmdma_prd_dma,
+	                                   GFP_DMA);
+	if(NULL == ap->bmdma_prd)
+	{
+		kfree(pd);
+		dma_free_coherent(NULL,
+		                  sizeof(sgdma_request_t),
+		                  pd->sgdma_request_va,
+		                  pd->sgdma_request_pa);
+		ap->private_data = NULL;
+		return -ENOMEM;
+	}
+#if 0
+	/* set the PRD table pointers to the space for the PRD tables in SRAM */
 	ap->bmdma_prd = (struct ata_bmdma_prd* )(OX820SATA_PRD +
 		(dma_channel * CONFIG_ODRB_NUM_SATA_PRD_ARRAYS * sizeof(struct ata_bmdma_prd)));
 	ap->bmdma_prd_dma = (dma_addr_t) (OX820SATA_PRD_PA +
 		(dma_channel * CONFIG_ODRB_NUM_SATA_PRD_ARRAYS * sizeof(struct ata_bmdma_prd)));
+#endif
 
 	/* perform post resetnis initialisation */
 	ox820sata_post_reset_init(ap);
@@ -1865,6 +1858,11 @@ static int ox820sata_port_start(struct ata_port *ap)
  */
 static void ox820sata_port_stop(struct ata_port *ap)
 {
+	ox820sata_private_data* pd = ap->private_data;
+
+	dma_free_coherent(NULL, sizeof(sgdma_request_t), pd->sgdma_request_va, pd->sgdma_request_pa);
+	dma_free_coherent(NULL, ATA_PRD_TBL_SZ * sizeof(struct ata_bmdma_prd), ap->bmdma_prd, ap->bmdma_prd_dma);
+
 	kfree(ap->private_data);
 }
 
